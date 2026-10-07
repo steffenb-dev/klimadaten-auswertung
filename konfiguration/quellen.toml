@@ -76,6 +76,20 @@ urls = [
 ]
 standard = true
 
+[dwd_monat_historisch]
+beschreibung = "DWD, Monatswerte je Station (Temperatur, Niederschlag u. a.), geprüft, bis Ende Vorjahr"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/monthly/kl/historical/"
+muster = 'monatswerte_KL_\d{5}_(?P<beginn>\d{8})_(?P<ende>\d{8})_hist\.zip'
+standard = true
+
+[dwd_monat_aktuell]
+beschreibung = "DWD, Monatswerte je Station, aktuell (ca. letzte 500 Tage), vorläufig geprüft"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/monthly/kl/recent/"
+muster = 'monatswerte_KL_\d{5}_akt\.zip'
+standard = true
+
 [dwd_gebietsmittel_temperatur]
 beschreibung = "DWD, Gebietsmittel Lufttemperatur (Deutschland + Bundesländer), monatlich"
 typ = "verzeichnis"

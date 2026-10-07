@@ -10,6 +10,8 @@ mindestjahre_referenz = 20
 [gitter]
 # Kantenlänge der Gitterzellen in Grad
 zellgroesse_grad = 5.0
+# Für Regionen wie Deutschland (Stationsnetz deutlich dichter)
+zellgroesse_regional_grad = 1.0
 
 [vollstaendigkeit]
 # Mindestanteil vorhandener Tage, damit ein Jahr in Tageswert-Auswertungen zählt

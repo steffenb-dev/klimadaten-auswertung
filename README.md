@@ -46,6 +46,25 @@ deutschland = einlesen.dwd_gebietsmittel("niederschlag")
 
 Fehlt die Aufbereitung oder haben sich die Rohdaten geändert, wird automatisch neu aufbereitet.
 
+## Auswertungen
+
+```bash
+uv run klima analysieren deutschland    # Temperatur/Niederschlag DE, eigene Berechnung vs. DWD
+uv run klima analysieren station 3987   # DWD-Station per ID …
+uv run klima analysieren station Potsdam   # … oder per Namensteil
+```
+
+Grafiken landen in `ausgabe/` – statisch als PNG/SVG, interaktiv als HTML (plotly).
+Optionen wie `--trend-von`, `--referenz-von`/`--referenz-bis` siehe `--help`.
+
+## Notebooks
+
+```bash
+uv run jupyter lab notebooks/
+```
+
+- `01_deutschland.ipynb` – Gebietsmittel Deutschland: vier Berechnungswege im Vergleich, Niederschlag, Stationstrends, Potsdam
+
 ## Tests
 
 ```bash

@@ -105,10 +105,12 @@ def laden(
         ergebnisse = lader.lade_datensatz(datensatz, zeitraum)
         zaehler = Counter(e.status for e in ergebnisse)
         typer.echo(
-            f"  {len(ergebnisse)} Datei(en): {zaehler['neu']} neu, "
+            f"  {len(ergebnisse) - zaehler['entfernt']} Datei(en): {zaehler['neu']} neu, "
             f"{zaehler['aktualisiert']} aktualisiert, "
             f"{zaehler['unveraendert']} unverändert, {zaehler['fehler']} Fehler"
         )
+        if zaehler["entfernt"]:
+            typer.echo(f"  {zaehler['entfernt']} nicht mehr angebotene Datei(en) entfernt")
         for ergebnis in ergebnisse:
             if ergebnis.status == "fehler":
                 typer.secho(f"  ✗ {ergebnis.url}: {ergebnis.meldung}", fg=typer.colors.RED)
@@ -159,3 +161,72 @@ def aufbereiten(
         zusatz = f" – {dateien} ({_groesse_lesbar(groesse)})" if ergebnis.dateien else ""
         typer.echo(texte[ergebnis.status] + zusatz)
     typer.echo(f"\nAblage: {aufbereitungsverzeichnis()}")
+
+
+analysieren_app = typer.Typer(help="Auswertungen rechnen und Grafiken nach `ausgabe/` schreiben.")
+app.add_typer(analysieren_app, name="analysieren")
+
+
+def _referenz(von: int | None, bis: int | None) -> tuple[int, int] | None:
+    if (von is None) != (bis is None):
+        raise typer.BadParameter("--referenz-von und --referenz-bis nur gemeinsam angeben.")
+    return (von, bis) if von is not None and bis is not None else None
+
+
+def _trends_ausgeben(ergebnis) -> None:
+    for name, trend in ergebnis.trends.items():
+        einheit = "%" if name.startswith("Niederschlag") else "°C"
+        typer.echo(f"  {name}: {trend.text(einheit)}")
+    typer.echo(f"\n{len(ergebnis.dateien)} Datei(en) geschrieben, z. B. {ergebnis.dateien[0]}")
+
+
+ReferenzVon = Annotated[
+    int | None, typer.Option(help="Beginn der Referenzperiode (Standard aus analyse.toml).")
+]
+ReferenzBis = Annotated[int | None, typer.Option(help="Ende der Referenzperiode.")]
+TrendVon = Annotated[int, typer.Option(help="Beginn des Trendzeitraums.")]
+
+
+@analysieren_app.command("deutschland")
+def analysieren_deutschland(
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Temperatur und Niederschlag in Deutschland: eigene Gebietsmittel vs. DWD."""
+    from klima import auswertungen
+
+    ergebnis = auswertungen.deutschland(trend_von, _referenz(referenz_von, referenz_bis))
+    typer.secho("Trends Deutschland:", bold=True)
+    _trends_ausgeben(ergebnis)
+
+
+@analysieren_app.command("station")
+def analysieren_station(
+    station: Annotated[str, typer.Argument(help="DWD-Stations-ID (z. B. 3987) oder Namensteil.")],
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Temperatur und Niederschlag einer DWD-Station."""
+    from klima import auswertungen, deutschland
+
+    if station.isdigit():
+        stations_id = station.zfill(5)
+    else:
+        treffer = deutschland.station_suchen(station)
+        if treffer.empty:
+            raise typer.BadParameter(f"Keine DWD-Station mit {station!r} im Namen gefunden.")
+        if len(treffer) > 1:
+            typer.echo("Mehrere Stationen gefunden, bitte ID angeben:")
+            for _, zeile in treffer.iterrows():
+                typer.echo(
+                    f"  {zeile.stations_id}  {zeile['name']}  "
+                    f"({zeile.von:%Y}–{zeile.bis:%Y}, {zeile.bundesland})"
+                )
+            raise typer.Exit(code=1)
+        stations_id = treffer.iloc[0]["stations_id"]
+
+    ergebnis = auswertungen.station(stations_id, trend_von, _referenz(referenz_von, referenz_bis))
+    typer.secho(f"Trends Station {stations_id}:", bold=True)
+    _trends_ausgeben(ergebnis)

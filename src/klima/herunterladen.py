@@ -153,6 +153,14 @@ class Manifest:
         with self._sperre:
             return [e for e in self._eintraege.values() if e.get("datensatz") == datensatz]
 
+    def urls_fuer(self, datensatz: str) -> list[str]:
+        with self._sperre:
+            return [u for u, e in self._eintraege.items() if e.get("datensatz") == datensatz]
+
+    def entferne(self, url: str) -> dict | None:
+        with self._sperre:
+            return self._eintraege.pop(url, None)
+
     def speichern(self) -> None:
         with self._sperre:
             self.pfad.parent.mkdir(parents=True, exist_ok=True)
@@ -195,7 +203,7 @@ def _sha256(pfad: Path) -> str:
 
 @dataclass
 class Ergebnis:
-    """Ergebnis für eine Datei: `neu`, `aktualisiert`, `unveraendert` oder `fehler`."""
+    """Ergebnis für eine Datei: `neu`, `aktualisiert`, `unveraendert`, `entfernt` oder `fehler`."""
 
     url: str
     pfad: Path
@@ -244,8 +252,27 @@ class Lader:
                 ]
             else:
                 ergebnisse = self._lade_parallel(urls, zielordner, datensatz)
+            if datensatz.typ == "verzeichnis" and zeitraum.offen:
+                ergebnisse += self._entferne_verwaiste(datensatz, set(urls))
         finally:
             self.manifest.speichern()
+        return ergebnisse
+
+    def _entferne_verwaiste(self, datensatz: Datensatz, aktuelle_urls: set[str]) -> list[Ergebnis]:
+        """Entfernt Dateien, die nicht mehr auf dem Server liegen.
+
+        Beispiel: Der DWD benennt historische Dateien jährlich um, weil das Enddatum im
+        Namen steht. Ohne Aufräumen lägen sonst alte und neue Fassung nebeneinander.
+        Nur bei ungefiltertem Abgleich, da eine Zeitauswahl nur einen Teil der Liste liefert.
+        """
+        ergebnisse = []
+        for url in self.manifest.urls_fuer(datensatz.name):
+            if url in aktuelle_urls:
+                continue
+            eintrag = self.manifest.entferne(url)
+            pfad = self.rohverzeichnis / eintrag["pfad"]
+            pfad.unlink(missing_ok=True)
+            ergebnisse.append(Ergebnis(url, pfad, "entfernt"))
         return ergebnisse
 
     def _lade_parallel(

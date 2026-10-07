@@ -286,8 +286,8 @@ Hovern oder Auswählen echten Mehrwert bringt.
 
 ### 4.5 Nutzung: CLI und Notebooks
 
-- F-UI-1: CLI `klima` mit deutschen Unterbefehlen, z. B. `laden`, `aufbereiten`, `analysieren global`,
-  `analysieren station`, `grafik …`.
+- F-UI-1: CLI `klima` mit deutschen Unterbefehlen: `laden`, `aufbereiten`,
+  `analysieren deutschland`, `analysieren station <ID|Name>` (später `analysieren global`).
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -338,12 +338,16 @@ klimadaten-auswertung/
 │   ├── herunterladen.py      # Download-Tool
 │   ├── einlesen.py           # Lade-API für Notebooks
 │   ├── archiv.py             # Lesen direkt aus .tar.gz/.zip/.gz im Arbeitsspeicher
-│   ├── parser/               # ghcnm, ghcnd, ersst, dwd, vergleichsreihen
-│   ├── anomalien.py          # Referenzperiode, Anomalien (absolut und relativ)
-│   ├── gitter.py             # Gitterung, Land-See-Maske, Flächengewichtung
-│   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes
-│   ├── niederschlag.py       # Niederschlagsindizes
-│   └── grafik/               # statisch.py (matplotlib), interaktiv.py (plotly)
+│   ├── aufbereiten.py        # Rohdaten -> Parquet/NetCDF, Aktualitätsprüfung
+│   ├── parser/               # ghcnm, ersst, dwd, vergleichsreihen (später ghcnd)
+│   ├── anomalien.py          # Referenzperiode, Anomalien (absolut und relativ), Jahreswerte
+│   ├── gitter.py             # Gitterung, Flächengewichtung (später Land-See-Maske)
+│   ├── trend.py              # lineare Trends, gleitende Mittel
+│   ├── deutschland.py        # Gebietsmittel und Stationstrends für Deutschland
+│   ├── auswertungen.py       # fertige Auswertungen inkl. Grafiken (für CLI und Notebooks)
+│   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes (M6)
+│   ├── niederschlag.py       # Niederschlagsindizes (M6)
+│   └── grafik/               # stil.py, statisch.py (matplotlib), interaktiv.py (plotly)
 ├── notebooks/                # explorative Analysen, je Meilenstein
 ├── tests/
 ├── daten/                    # nicht im Git

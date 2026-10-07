@@ -240,3 +240,51 @@ def test_ungueltige_konfiguration():
         datensatz(typ="datei")
     with pytest.raises(ValueError, match="auf '/' enden"):
         datensatz(typ="verzeichnis", url="https://x.test/a", muster=".*")
+
+
+def test_nicht_mehr_angebotene_dateien_werden_entfernt(tmp_path):
+    listen = iter(
+        [
+            '<a href="tageswerte_KL_00001_19370101_20241231_hist.zip">x</a>',
+            '<a href="tageswerte_KL_00001_19370101_20251231_hist.zip">x</a>',
+        ]
+    )
+
+    def server(request):
+        if request.url.path.endswith("/"):
+            return httpx.Response(200, text=next(listen))
+        return httpx.Response(200, content=b"zip")
+
+    dwd = datensatz(
+        name="dwd",
+        typ="verzeichnis",
+        url=BASIS,
+        muster=r"tageswerte_KL_\d{5}_(?P<beginn>\d{8})_(?P<ende>\d{8})_hist\.zip",
+    )
+    lader_mit(tmp_path, server).lade_datensatz(dwd)
+    ergebnisse = lader_mit(tmp_path, server).lade_datensatz(dwd)
+
+    assert sorted(e.status for e in ergebnisse) == ["entfernt", "neu"]
+    assert [p.name for p in (tmp_path / "dwd").iterdir()] == [
+        "tageswerte_KL_00001_19370101_20251231_hist.zip"
+    ]
+    manifest = json.loads((tmp_path / MANIFEST_NAME).read_text())
+    assert list(manifest) == [BASIS + "tageswerte_KL_00001_19370101_20251231_hist.zip"]
+
+
+def test_zeitfilter_entfernt_keine_dateien(tmp_path):
+    def server(request):
+        if request.url.path.endswith("/"):
+            return httpx.Response(200, text=VERZEICHNIS_HTML)
+        return httpx.Response(200, content=b"nc")
+
+    ersst = datensatz(
+        name="ersst",
+        typ="verzeichnis",
+        url=BASIS,
+        muster=r"ersst\.v5\.(?P<jahr>\d{4})(?P<monat>\d{2})\.nc",
+    )
+    lader_mit(tmp_path, server).lade_datensatz(ersst)
+    ergebnisse = lader_mit(tmp_path, server).lade_datensatz(ersst, Zeitraum.aus_text("1951"))
+    assert "entfernt" not in {e.status for e in ergebnisse}
+    assert len(list((tmp_path / "ersst").iterdir())) == 4

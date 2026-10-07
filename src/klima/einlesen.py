@@ -181,3 +181,23 @@ def dwd_gebietsmittel(
         filter_.append(("gebiet", "in", list(gebiete)))
     pfad = _ordner(f"dwd_gebietsmittel_{groesse}") / "monatswerte.parquet"
     return _lies(pfad, filter_, None).reset_index(drop=True)
+
+
+def dwd_monatswerte(
+    stationen: Iterable[str] | None = None,
+    von: int | None = None,
+    bis: int | None = None,
+    spalten: list[str] | None = None,
+) -> pd.DataFrame:
+    """Monatswerte der DWD-Stationen (historisch + aktuell zusammengeführt).
+
+    Spalten u. a. `tmittel`, `tmax_mittel`, `tmin_mittel` (°C), `niederschlag` (mm),
+    `sonnenschein` (h); Stations-IDs 5-stellig, z. B. `"03987"` für Potsdam.
+    """
+    filter_ = _jahresfilter(von, bis)
+    if stationen is not None:
+        filter_.append(("stations_id", "in", [str(s).zfill(5) for s in stationen]))
+    werte = _lies(_ordner("dwd_monatswerte") / "monatswerte.parquet", filter_, spalten)
+    if "stations_id" in werte:
+        werte["stations_id"] = werte["stations_id"].cat.remove_unused_categories()
+    return werte

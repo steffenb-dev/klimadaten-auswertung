@@ -92,6 +92,10 @@ def _dwd_gebietsmittel(groesse: str) -> Callable[[list[Path]], list[Ausgabe]]:
     return aufbereiter
 
 
+def _dwd_monatswerte(dateien: list[Path]) -> list[Ausgabe]:
+    return [Ausgabe("monatswerte", dwd.lies_monatswerte_alle(dateien))]
+
+
 AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "ghcnm_qcu": _ghcnm,
     "ghcnm_qcf": _ghcnm,
@@ -102,17 +106,34 @@ AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "dwd_stationen": _dwd_stationen,
     "dwd_gebietsmittel_temperatur": _dwd_gebietsmittel("temperatur"),
     "dwd_gebietsmittel_niederschlag": _dwd_gebietsmittel("niederschlag"),
+    "dwd_monatswerte": _dwd_monatswerte,
 }
+
+# Aufbereitete Datensätze, die aus mehreren Rohdatensätzen entstehen; sonst gilt der eigene Name
+QUELLDATENSAETZE: dict[str, tuple[str, ...]] = {
+    "dwd_monatswerte": ("dwd_monat_historisch", "dwd_monat_aktuell"),
+}
+
+
+def quelldatensaetze(datensatz: str) -> tuple[str, ...]:
+    return QUELLDATENSAETZE.get(datensatz, (datensatz,))
 
 
 # --- Quellkennung und Aktualität -----------------------------------------------
 
 
 def quellkennung(manifest: Manifest, datensatz: str) -> str | None:
-    """Hash über Version und Prüfsummen aller Rohdateien des Datensatzes; None ohne Rohdaten."""
-    eintraege = sorted(manifest.eintraege_fuer(datensatz), key=lambda e: e["pfad"])
-    if not eintraege:
-        return None
+    """Hash über Version und Prüfsummen aller Rohdateien des Datensatzes.
+
+    None, wenn für mindestens einen Quelldatensatz keine Rohdaten vorliegen.
+    """
+    eintraege = []
+    for quelle in quelldatensaetze(datensatz):
+        teil = manifest.eintraege_fuer(quelle)
+        if not teil:
+            return None
+        eintraege += teil
+    eintraege.sort(key=lambda e: e["pfad"])
     pruefsumme = hashlib.sha256(f"version={AUFBEREITUNG_VERSION}\n".encode())
     for eintrag in eintraege:
         pruefsumme.update(f"{eintrag['pfad']}:{eintrag['sha256']}\n".encode())
@@ -208,12 +229,16 @@ class Aufbereitung:
         if not erzwingen and self.ist_aktuell(datensatz, manifest):
             return Ergebnis(datensatz, "aktuell", self.ausgabedateien(datensatz))
 
-        rohdateien = [self.rohverzeichnis / e["pfad"] for e in manifest.eintraege_fuer(datensatz)]
+        rohdateien = [
+            self.rohverzeichnis / e["pfad"]
+            for quelle in quelldatensaetze(datensatz)
+            for e in manifest.eintraege_fuer(quelle)
+        ]
         fehlend = [p for p in rohdateien if not p.exists()]
         if fehlend:
             raise RohdatenFehlen(
                 f"{datensatz}: {len(fehlend)} Rohdatei(en) fehlen, z. B. {fehlend[0]}. "
-                f"Bitte `klima laden {datensatz}` ausführen."
+                f"Bitte `klima laden {' '.join(quelldatensaetze(datensatz))}` ausführen."
             )
 
         ordner = self.zielverzeichnis / datensatz
@@ -236,7 +261,7 @@ class Aufbereitung:
         if ergebnis.status == "keine_rohdaten":
             raise RohdatenFehlen(
                 f"Für {datensatz!r} liegen keine Rohdaten vor. "
-                f"Bitte zuerst `klima laden {datensatz}` ausführen."
+                f"Bitte zuerst `klima laden {' '.join(quelldatensaetze(datensatz))}` ausführen."
             )
         if ergebnis.status == "kein_parser":
             raise ValueError(f"Für {datensatz!r} gibt es (noch) keine Aufbereitung.")

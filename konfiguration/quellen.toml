@@ -31,6 +31,12 @@ typ = "datei"
 urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qcf.tar.gz"]
 standard = true
 
+[ghcnm_laender]
+beschreibung = "GHCN-Monthly v4, Ländercodes (FIPS) und Ländernamen"
+typ = "datei"
+urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm-countries.txt"]
+standard = true
+
 [ghcnm_qfe]
 beschreibung = "GHCN-Monthly v4, homogenisiert + Lücken geschätzt, nur 1961–2010 (QFE)"
 typ = "datei"

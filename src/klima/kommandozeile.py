@@ -117,3 +117,45 @@ def laden(
     typer.echo(f"\nAblage: {roh}")
     if fehler_gesamt:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def aufbereiten(
+    datensaetze: Annotated[
+        list[str] | None,
+        typer.Argument(help="Namen der Datensätze. Ohne Angabe: alle heruntergeladenen."),
+    ] = None,
+    erzwingen: Annotated[
+        bool, typer.Option("--erzwingen", help="Neu aufbereiten, auch wenn alles aktuell ist.")
+    ] = False,
+) -> None:
+    """Rohdaten parsen und als Parquet bzw. NetCDF in `daten/aufbereitet/` ablegen."""
+    # Erst hier importieren: pandas/xarray verlangsamen sonst den Start von `klima laden`
+    from klima.aufbereiten import AUFBEREITER, Aufbereitung
+    from klima.einlesen import aufbereitungsverzeichnis
+
+    if datensaetze:
+        unbekannt = [n for n in datensaetze if n not in AUFBEREITER]
+        if unbekannt:
+            raise typer.BadParameter(
+                f"Keine Aufbereitung für: {', '.join(unbekannt)}. "
+                f"Verfügbar: {', '.join(AUFBEREITER)}"
+            )
+        auswahl = list(datensaetze)
+    else:
+        auswahl = list(AUFBEREITER)
+
+    aufbereitung = Aufbereitung(rohverzeichnis(), aufbereitungsverzeichnis())
+    texte = {
+        "aufbereitet": "aufbereitet",
+        "aktuell": "bereits aktuell",
+        "keine_rohdaten": "übersprungen, keine Rohdaten (erst `klima laden`)",
+    }
+    for name in auswahl:
+        typer.echo(f"▸ {name}: ", nl=False)
+        ergebnis = aufbereitung.aufbereiten(name, erzwingen=erzwingen)
+        groesse = sum(p.stat().st_size for p in ergebnis.dateien)
+        dateien = ", ".join(p.name for p in ergebnis.dateien)
+        zusatz = f" – {dateien} ({_groesse_lesbar(groesse)})" if ergebnis.dateien else ""
+        typer.echo(texte[ergebnis.status] + zusatz)
+    typer.echo(f"\nAblage: {aufbereitungsverzeichnis()}")

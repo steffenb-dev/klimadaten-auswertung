@@ -225,8 +225,8 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
 
 ### 4.2 Einlesen / Aufbereitung
 
-- F-IO-1: Parser GHCNm `.inv` und `.dat` (QCU und QCF) → Stationen-`DataFrame` und Long-Format `stations_id, jahr, monat, tavg, flags`.
-- F-IO-2: Parser ERSST-NetCDF → `xarray.Dataset` (Zeit × Lat × Lon).
+- F-IO-1: Parser GHCNm `.inv` und `.dat` (QCU und QCF) → Stationen-`DataFrame` und Long-Format `stations_id, jahr, monat, tavg, dm_flag, qc_flag, ds_flag`.
+- F-IO-2: Parser ERSST-NetCDF → `xarray.Dataset` mit `sst(zeit, breite, laenge)`.
 - F-IO-3: Parser GHCN-Daily `.dly` → Long-Format `stations_id, datum, element, wert, flags`.
 - F-IO-4: Parser DWD (Stationslisten, Monats-/Tageswerte, Gebietsmittel), inkl. Zusammenführung `historical` + `recent`.
 - F-IO-5: Parser Vergleichsreihen (GISTEMP-CSV, ggf. HadCRUT5/Berkeley Earth).
@@ -243,7 +243,9 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
   (Parquet-Filter, z. B. `filters=[("jahr", ">=", 1951), ("stations_id", "in", [...])]`; bei NetCDF `sel()`).
 - F-IO-6c: Jede aufbereitete Datei enthält in ihren Metadaten die SHA-256 der Quelldatei(en) aus dem Manifest.
   `klima.einlesen` erkennt veraltete Dateien und bereitet automatisch neu auf.
-- F-IO-7: Einheitliche Lade-API für Notebooks, z. B. `klima.einlesen.ghcnm(variante="qcf")`.
+- F-IO-7: Einheitliche Lade-API für Notebooks in `klima.einlesen`, z. B.
+  `einlesen.ghcnm_monatswerte("qcf", stationen=..., von=1951, bis=1980)`, `einlesen.ersst(...)`,
+  `einlesen.gistemp(...)`, `einlesen.dwd_gebietsmittel(...)`.
 
 ### 4.3 Analyse
 

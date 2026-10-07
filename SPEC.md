@@ -1,6 +1,6 @@
 # SPEC: Klimadaten-Auswertung
 
-> Status: **Entwurf v0.2** – wird gemeinsam weiterentwickelt. Getroffene Entscheidungen stehen in
+> Status: **Entwurf v0.3** – wird gemeinsam weiterentwickelt. Getroffene Entscheidungen stehen in
 > [Abschnitt 9](#9-entscheidungen), offene Punkte in [Abschnitt 10](#10-offene-fragen).
 
 ## 1. Ziel
@@ -8,14 +8,16 @@
 Wir wollen die Erwärmung der Erde **selbst aus den Rohdaten der Wetterstationen und Meeresmessungen**
 nachvollziehen, also mit denselben Daten, die auch NASA, NOAA, das britische Met Office und Berkeley Earth nutzen.
 Am Ende sollen eigene globale Temperaturkurven (Land und Land+Ozean) stehen, die wir mit den
-offiziellen Reihen vergleichen können. Ergänzend analysieren wir Deutschland im Detail und
-werten Tageswerte aus (Hitzetage, Tropennächte, Frosttage).
+offiziellen Reihen vergleichen können. Ergänzend analysieren wir Deutschland im Detail,
+werten Tageswerte aus (Hitzetage, Tropennächte, Frosttage) und untersuchen den **Niederschlag**
+(Summen, Starkregen, Trockenperioden).
 
 Teilziele:
 
 1. Ein Download-Tool, das die benötigten Rohdaten reproduzierbar herunterlädt und lokal ablegt.
 2. Parser, die die Rohformate in saubere `pandas`-/`xarray`-Strukturen überführen.
-3. Analysen: Stationsreihen, Anomalien, regionale und globale Mittel, Trends, Extremwert-Indizes.
+3. Analysen: Stationsreihen, Anomalien, regionale und globale Mittel, Trends, Extremwert-Indizes
+   für Temperatur und Niederschlag.
 4. Visualisierungen: statisch und – wo sinnvoll – interaktiv.
 5. Nutzung sowohl über eine Kommandozeile (CLI) als auch in Jupyter-Notebooks.
 
@@ -62,6 +64,10 @@ Da ca. 70 % der Erdoberfläche Ozean sind, braucht man für eine echte *globale*
 Hinweis: Der Gesamtbestand von GHCN-Daily ist sehr groß (mehrere GB komprimiert).
 Wir laden daher gezielt einzelne Stationen bzw. gefilterte Auswahlen.
 
+**Niederschlag** ist in beiden Quellen enthalten (`PRCP` bzw. DWD `RSK`). Monatssummen bilden wir
+aus den Tageswerten; zusätzlich liefert der DWD fertige Monatswerte und Gebietsmittel für Niederschlag.
+Ob NOAA eine monatliche Niederschlagsvariante von GHCNm v4 bereitstellt, prüfen wir bei der Implementierung.
+
 ### 2.4 Höhere Auflösungen (stündlich und feiner)
 
 | Quelle | Auflösung | Abdeckung | URL |
@@ -94,7 +100,7 @@ mit Messdaten-Assimilation – bewusst *nicht* Teil der Rohdatenauswertung, höc
 | Berkeley Earth | `https://berkeleyearth.org/data/` |
 | DWD Gebietsmittel Deutschland | `https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/` |
 
-> Alle URLs werden bei der Implementierung nochmals geprüft und zentral in `config/sources.toml` gepflegt.
+> Alle URLs werden bei der Implementierung nochmals geprüft und zentral in `konfiguration/quellen.toml` gepflegt.
 
 ## 3. Methodik
 
@@ -103,6 +109,8 @@ mit Messdaten-Assimilation – bewusst *nicht* Teil der Rohdatenauswertung, höc
 1. **Qualitätsfilter**: Fehlwerte (`-9999`) und QC-Flags auswerten, Stationen mit zu wenigen Daten verwerfen.
 2. **Anomalien statt Absolutwerte**: Pro Station und Kalendermonat den Mittelwert einer Referenzperiode
    abziehen. Dadurch werden Stationen in Bergen und Tälern vergleichbar, und der Jahresgang verschwindet.
+   **Standard-Referenzperiode: 1951–1980** (wie GISTEMP), konfigurierbar in `konfiguration/analyse.toml`
+   und per Parameter überschreibbar (z. B. 1961–1990, 1991–2020).
 3. **Gitterung**: Stationen einem Gitter zuordnen (z. B. 5°×5°), Anomalien pro Zelle mitteln.
    Verhindert, dass dicht besetzte Regionen (USA, Europa) das Ergebnis dominieren.
 4. **Ozean**: ERSST-Werte (2°×2°) ebenfalls in Anomalien umrechnen und auf dasselbe Gitter aggregieren.
@@ -130,37 +138,61 @@ Angelehnt an die DWD-Definitionen bzw. die ETCCDI-Indizes:
 
 Auswertung: jährliche Anzahl pro Station/Region, Trend, Vergleich von Perioden (z. B. 1961–1990 vs. 1991–2020).
 
-### 3.3 Bekannte Fallstricke, die wir sichtbar machen wollen
+### 3.3 Niederschlag
+
+Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene Methoden:
+
+- **Relative Anomalien**: Abweichung in **% des Mittels der Referenzperiode** statt in mm,
+  da sich Niederschlagsmengen regional um Größenordnungen unterscheiden.
+- **Schwerpunkt regional** (Deutschland, Europa, einzelne Stationen). Ein globales Mittel aus
+  Stationsdaten ist wegen fehlender Ozeanabdeckung und hoher räumlicher Variabilität nur
+  eingeschränkt aussagekräftig – wenn, dann als Land-Mittel mit deutlichem Hinweis.
+- **Indizes** (angelehnt an ETCCDI/DWD):
+
+| Kenngröße | Definition |
+|---|---|
+| Jahres-/Jahreszeitensumme | Summe `PRCP` pro Jahr bzw. Saison (DJF, MAM, JJA, SON) |
+| Niederschlagstage | Tage mit `PRCP ≥ 1 mm` |
+| Starkniederschlagstage | Tage mit `PRCP ≥ 10 mm` bzw. `≥ 20 mm` (Schwellen konfigurierbar) |
+| Rx1day / Rx5day | höchste 1-Tages- bzw. 5-Tages-Summe im Jahr |
+| R95p | Niederschlagsmenge aus sehr nassen Tagen (> 95. Perzentil der Referenzperiode) |
+| SDII | mittlere Intensität an Niederschlagstagen (Summe / Anzahl Tage ≥ 1 mm) |
+| CDD | längste Trockenperiode (aufeinanderfolgende Tage `< 1 mm`) |
+| CWD | längste Nassperiode (aufeinanderfolgende Tage `≥ 1 mm`) |
+
+### 3.4 Bekannte Fallstricke, die wir sichtbar machen wollen
 
 - Sich verändernde Stationsabdeckung über die Zeit (vor 1900 sehr dünn, v. a. Südhalbkugel und Arktis).
 - Städtische Wärmeinseln (Urban Heat Island) – Vergleich ländlich vs. städtisch.
 - Effekt der Homogenisierung: **QCU vs. QCF** systematisch vergleichen (global, regional, einzelne Stationen).
 - Bei Tageswerten: fehlende Tage verfälschen Zählwerte → Mindestvollständigkeit pro Jahr fordern.
 - DWD `historical` vs. `recent`: Überlappung sauber zusammenführen.
+- Niederschlag: Messverluste durch Wind (v. a. bei Schnee), Gerätewechsel; GHCN-Niederschlag ist
+  nicht homogenisiert. Einzelne Extremwerte auf Plausibilität prüfen.
 
 ## 4. Funktionale Anforderungen
 
-### 4.1 Download-Tool (`klima download`)
+### 4.1 Download-Tool (`klima laden`)
 
 - F-DL-1: Lädt konfigurierte Datensätze per HTTPS herunter:
   GHCNm v4 (QCU + QCF), ERSST v5, GHCN-Daily (Stationsliste + ausgewählte Stationen),
-  DWD (Monats- und Tageswerte, Gebietsmittel), Vergleichsreihen (GISTEMP, ggf. HadCRUT5, Berkeley Earth).
-- F-DL-2: Ablage unter `data/raw/<datensatz>/`, Archive werden entpackt.
+  DWD (Monats- und Tageswerte, Gebietsmittel für Temperatur und Niederschlag), Vergleichsreihen (GISTEMP, ggf. HadCRUT5, Berkeley Earth).
+- F-DL-2: Ablage unter `daten/roh/<datensatz>/`, Archive werden entpackt.
 - F-DL-3: Bereits vorhandene Dateien werden nicht erneut geladen (Prüfung über Größe/`Last-Modified`), `--force` erzwingt Neuladen.
 - F-DL-4: Fortschrittsanzeige, Retry bei Netzwerkfehlern, parallele Downloads für viele kleine Dateien (ERSST, DWD).
-- F-DL-5: Ein Manifest (`data/raw/manifest.json`) protokolliert Quelle, URL, Download-Zeitpunkt, SHA-256 – für Reproduzierbarkeit.
+- F-DL-5: Ein Manifest (`daten/roh/manifest.json`) protokolliert Quelle, URL, Download-Zeitpunkt, SHA-256 – für Reproduzierbarkeit.
 - F-DL-6: Auswahl von Stationen für Tageswerte per Filter (Stations-IDs, Land, Bounding Box, Mindestlänge der Reihe).
-- F-DL-7: `klima download --list` zeigt verfügbare Datensätze und deren lokalen Status.
+- F-DL-7: `klima laden --liste` zeigt verfügbare Datensätze und deren lokalen Status.
 
 ### 4.2 Einlesen / Aufbereitung
 
-- F-IO-1: Parser GHCNm `.inv` und `.dat` (QCU und QCF) → Stationen-`DataFrame` und Long-Format `station_id, year, month, tavg, flags`.
+- F-IO-1: Parser GHCNm `.inv` und `.dat` (QCU und QCF) → Stationen-`DataFrame` und Long-Format `stations_id, jahr, monat, tavg, flags`.
 - F-IO-2: Parser ERSST-NetCDF → `xarray.Dataset` (Zeit × Lat × Lon).
-- F-IO-3: Parser GHCN-Daily `.dly` → Long-Format `station_id, date, element, value, flags`.
+- F-IO-3: Parser GHCN-Daily `.dly` → Long-Format `stations_id, datum, element, wert, flags`.
 - F-IO-4: Parser DWD (Stationslisten, Monats-/Tageswerte, Gebietsmittel), inkl. Zusammenführung `historical` + `recent`.
 - F-IO-5: Parser Vergleichsreihen (GISTEMP-CSV, ggf. HadCRUT5/Berkeley Earth).
-- F-IO-6: Zwischenspeicherung als Parquet (tabellarisch) bzw. NetCDF/Zarr (gegittert) unter `data/processed/`.
-- F-IO-7: Einheitliche Lade-API für Notebooks, z. B. `klima.load.ghcnm(variant="qcf")`.
+- F-IO-6: Zwischenspeicherung als Parquet (tabellarisch) bzw. NetCDF/Zarr (gegittert) unter `daten/aufbereitet/`.
+- F-IO-7: Einheitliche Lade-API für Notebooks, z. B. `klima.einlesen.ghcnm(variante="qcf")`.
 
 ### 4.3 Analyse
 
@@ -173,6 +205,11 @@ Auswertung: jährliche Anzahl pro Station/Region, Trend, Vergleich von Perioden 
 - F-AN-6: Statistik zur Abdeckung (aktive Stationen bzw. besetzte Zellen pro Jahr).
 - F-AN-7: Deutschland: Gebietsmittel aus Stationsdaten selbst berechnen und mit DWD-Gebietsmittel vergleichen.
 - F-AN-8: Tageswerte: Klimakenntage und Indizes nach Abschnitt 3.2 pro Station/Region und Jahr.
+- F-AN-9: Niederschlag: Summen, relative Anomalien und Indizes nach Abschnitt 3.3 pro Station/Region,
+  Jahr und Jahreszeit; Vergleich mit DWD-Gebietsmitteln.
+- F-AN-10: Zentrale Analyse-Konfiguration (`konfiguration/analyse.toml`) mit Standardwerten
+  (Referenzperiode 1951–1980, Gittergröße, Schwellenwerte, Mindestvollständigkeit); jeder Wert
+  ist per CLI-Option bzw. Funktionsparameter überschreibbar.
 
 ### 4.4 Visualisierung
 
@@ -189,13 +226,15 @@ Hovern oder Auswählen echten Mehrwert bringt.
 | F-VIS-6 | QCU vs. QCF Differenzplot | ✓ | ✓ |
 | F-VIS-7 | Klimakenntage pro Jahr (Balken + Trend) | ✓ | ✓ |
 | F-VIS-8 | Deutschlandkarte mit DWD-Stationen | ✓ | ✓ |
+| F-VIS-9 | Niederschlag: Jahres-/Saisonsummen als relative Anomalie, Starkregentage, Trockenperioden | ✓ | ✓ |
 
-- F-VIS-9: Export statisch als PNG/SVG, interaktiv als eigenständige HTML-Datei nach `output/`.
-- F-VIS-10: Beschriftungen (Titel, Achsen, Legenden) wahlweise **Deutsch oder Englisch** (`lang="de"|"en"`).
+- F-VIS-10: Export statisch als PNG/SVG, interaktiv als eigenständige HTML-Datei nach `ausgabe/`.
+- F-VIS-11: Alle Beschriftungen (Titel, Achsen, Legenden) auf Deutsch, Zahlen im deutschen Format (Dezimalkomma).
 
 ### 4.5 Nutzung: CLI und Notebooks
 
-- F-UI-1: CLI `klima` mit Unterbefehlen, z. B. `download`, `prepare`, `analyze global`, `analyze station`, `plot …`.
+- F-UI-1: CLI `klima` mit deutschen Unterbefehlen, z. B. `laden`, `aufbereiten`, `analysieren global`,
+  `analysieren station`, `grafik …`.
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -203,9 +242,15 @@ Hovern oder Auswählen echten Mehrwert bringt.
 
 - NF-1: Reproduzierbar – gleiche Rohdaten + gleiche Konfiguration → gleiches Ergebnis.
 - NF-2: Läuft auf einem normalen Laptop; große Datensätze (GHCN-Daily, Stundenwerte) nur gefiltert laden.
-- NF-3: Rohdaten werden nie verändert; alle Ableitungen landen in `data/processed/`.
-- NF-4: Kernfunktionen (Parser, Anomalie, Gitterung, Gewichtung, Kenntage) mit `pytest` getestet.
-- NF-5: Sprache – siehe Entscheidung E-7 in Abschnitt 9.
+- NF-3: Rohdaten werden nie verändert; alle Ableitungen landen in `daten/aufbereitet/`.
+- NF-4: Kernfunktionen (Parser, Anomalie, Gitterung, Gewichtung, Kenntage, Niederschlagsindizes) mit `pytest` getestet.
+- NF-5: **Durchgängig Deutsch**: Bezeichner (Module, Funktionen, Variablen, Spalten), Kommentare,
+  Docstrings, CLI, Fehlermeldungen, Dokumentation, Notebooks und Grafiken.
+  - In Bezeichnern und Dateinamen werden Umlaute transkribiert (`ae`, `oe`, `ue`, `ss`),
+    z. B. `flaechengewichtung()` – für Kompatibilität mit Werkzeugen und Dateisystemen.
+  - In Kommentaren, Docstrings und Texten stehen echte Umlaute.
+  - Etablierte Fachkürzel und Namen aus den Datenquellen bleiben im Original (`TMAX`, `PRCP`, `QCU`, `SST`),
+    ebenso die APIs externer Bibliotheken.
 
 ## 6. Technologie-Stack
 
@@ -229,24 +274,25 @@ klimadaten-auswertung/
 ├── SPEC.md
 ├── README.md
 ├── pyproject.toml
-├── config/
-│   └── sources.toml          # URLs und Datensatz-Definitionen
+├── konfiguration/
+│   ├── quellen.toml          # URLs und Datensatz-Definitionen
+│   └── analyse.toml          # Standardwerte, z. B. Referenzperiode 1951–1980
 ├── src/klima/
-│   ├── cli.py                # Einstiegspunkt `klima`
-│   ├── download.py           # Download-Tool
-│   ├── load.py               # Lade-API für Notebooks
-│   ├── io/                   # Parser: ghcnm, ghcnd, ersst, dwd, reference
-│   ├── anomaly.py            # Referenzperiode, Anomalien
-│   ├── gridding.py           # Gitterung, Land-See-Maske, Flächengewichtung
-│   ├── indices.py            # Klimakenntage / Extremindizes
-│   ├── i18n.py               # Beschriftungen DE/EN
-│   └── plots/                # static.py (matplotlib), interactive.py (plotly)
+│   ├── kommandozeile.py      # Einstiegspunkt `klima`
+│   ├── herunterladen.py      # Download-Tool
+│   ├── einlesen.py           # Lade-API für Notebooks
+│   ├── parser/               # ghcnm, ghcnd, ersst, dwd, vergleichsreihen
+│   ├── anomalien.py          # Referenzperiode, Anomalien (absolut und relativ)
+│   ├── gitter.py             # Gitterung, Land-See-Maske, Flächengewichtung
+│   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes
+│   ├── niederschlag.py       # Niederschlagsindizes
+│   └── grafik/               # statisch.py (matplotlib), interaktiv.py (plotly)
 ├── notebooks/                # explorative Analysen, je Meilenstein
 ├── tests/
-├── data/                     # nicht im Git
-│   ├── raw/
-│   └── processed/
-└── output/                   # Grafiken, nicht im Git
+├── daten/                    # nicht im Git
+│   ├── roh/
+│   └── aufbereitet/
+└── ausgabe/                  # Grafiken, nicht im Git
 ```
 
 ## 8. Meilensteine
@@ -255,10 +301,10 @@ klimadaten-auswertung/
 |---|---|---|
 | M1 | Projekt-Setup, Download-Tool: GHCNm v4 (QCU+QCF), ERSST v5, GISTEMP, DWD-Stationslisten | Rohdaten liegen lokal |
 | M2 | Parser + Cache für GHCNm, ERSST, Vergleichsreihen | Daten als DataFrame/Dataset |
-| M3 | Einzelstation & Deutschland (GHCNm + DWD-Monatswerte, Gebietsmittel), Warming Stripes | erste Plots |
+| M3 | Einzelstation & Deutschland (GHCNm + DWD-Monatswerte, Gebietsmittel für Temperatur und Niederschlag), Warming Stripes | erste Plots |
 | M4 | Globale Land-Anomalie, QCU vs. QCF, Vergleich mit GISTEMP Land | eigene Landkurve |
 | M5 | ERSST-Integration, Land+Ozean, Vergleich mit GISTEMP/HadCRUT5 | eigene globale Kurve |
-| M6 | Tageswerte: GHCN-Daily + DWD täglich, Klimakenntage, Tagesspanne | Extremwert-Analysen |
+| M6 | Tageswerte: GHCN-Daily + DWD täglich, Klimakenntage, Tagesspanne, Niederschlagsindizes | Extremwert-Analysen |
 | M7 *(optional)* | Stundenwerte DWD (ggf. GHCNh), Tagesgang; Stadt vs. Land; ggf. kleines Dashboard | vertiefende Analysen |
 
 ## 9. Entscheidungen
@@ -271,15 +317,11 @@ klimadaten-auswertung/
 | E-4 | Zeitauflösung | Monats- **und Tageswerte**; Stundenwerte optional in M7 |
 | E-5 | Arbeitsweise | **CLI und Notebooks** auf gemeinsamer Python-API |
 | E-6 | Visualisierung | Statisch + **interaktiv (plotly)**, wo sinnvoll |
-| E-7 | Sprache | Deutsch und Englisch – Ausgestaltung siehe Frage 1 in Abschnitt 10 |
+| E-7 | Sprache | **Durchgängig Deutsch**, auch Code und Kommentare (Details: NF-5) |
+| E-8 | Niederschlag | **Wird mit ausgewertet** (Abschnitt 3.3) |
+| E-9 | Referenzperiode | Standard **1951–1980**, konfigurierbar |
+| E-10 | Versionsverwaltung | Git, GitHub-Repository `steffenb-dev/klimadaten-auswertung` |
 
 ## 10. Offene Fragen
 
-1. **Sprache genauer**: Vorschlag – Bezeichner, Kommentare und Docstrings auf Englisch;
-   README und Notebooks auf Deutsch; Grafikbeschriftungen umschaltbar DE/EN. Passt das,
-   oder sollen z. B. auch Kommentare/README zweisprachig sein?
-2. **Niederschlag**: Mit den Tageswerten bekommen wir Niederschlag praktisch „gratis“ – mit auswerten
-   (z. B. Starkregentage, Trockenperioden) oder vorerst nur Temperatur?
-3. **Referenzperiode Standard**: 1951–1980 (wie GISTEMP, gut vergleichbar) oder 1991–2020 (aktuelle WMO-Normalperiode)?
-   Konfigurierbar ist sie ohnehin.
-4. **Git**: Soll das Projekt als Git-Repository angelegt werden (ggf. mit GitHub-Remote)?
+Derzeit keine. Neue Fragen, die während der Umsetzung entstehen, werden hier gesammelt.

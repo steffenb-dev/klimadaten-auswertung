@@ -1,6 +1,6 @@
 # Daten und Ergebnisse (werden per Download-Tool erzeugt)
-data/
-output/
+daten/
+ausgabe/
 
 # Python
 __pycache__/

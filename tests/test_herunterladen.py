@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
-import tarfile
 
 import httpx
 import pytest
@@ -223,42 +221,6 @@ def test_paralleler_download_mehrerer_dateien(tmp_path):
     ergebnisse = lader_mit(tmp_path, server, parallel=4).lade_datensatz(ersst)
     assert [e.status for e in ergebnisse] == ["neu"] * 4
     assert (tmp_path / "ersst" / "ersst.v5.198101.nc").read_bytes() == b"/daten/ersst.v5.198101.nc"
-
-
-# --- Entpacken -----------------------------------------------------------------
-
-
-def tar_gz(dateien: dict[str, bytes]) -> bytes:
-    puffer = io.BytesIO()
-    with tarfile.open(fileobj=puffer, mode="w:gz") as archiv:
-        for name, inhalt in dateien.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(inhalt)
-            archiv.addfile(info, io.BytesIO(inhalt))
-    return puffer.getvalue()
-
-
-def test_archiv_wird_entpackt_und_alter_stand_entfernt(tmp_path):
-    versionen = iter(
-        [
-            tar_gz({"ghcnm.v4.20261006/ghcnm.qcu.dat": b"alt"}),
-            tar_gz({"ghcnm.v4.20261007/ghcnm.qcu.dat": b"neu"}),
-        ]
-    )
-
-    def server(request):
-        return httpx.Response(200, content=next(versionen))
-
-    quelle = datensatz(name="ghcnm_qcu", typ="datei", urls=[BASIS + "ghcnm.tar.gz"], entpacken=True)
-    lader_mit(tmp_path, server).lade_datensatz(quelle)
-    ordner = tmp_path / "ghcnm_qcu"
-    assert (ordner / "ghcnm.v4.20261006" / "ghcnm.qcu.dat").read_bytes() == b"alt"
-
-    lader_mit(tmp_path, server).lade_datensatz(quelle)
-    assert not (ordner / "ghcnm.v4.20261006").exists()
-    assert (ordner / "ghcnm.v4.20261007" / "ghcnm.qcu.dat").read_bytes() == b"neu"
-    manifest = json.loads((tmp_path / MANIFEST_NAME).read_text())
-    assert manifest[BASIS + "ghcnm.tar.gz"]["entpackt"] == ["ghcnm.v4.20261007"]
 
 
 # --- Konfiguration -------------------------------------------------------------

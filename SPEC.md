@@ -211,7 +211,8 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
 - F-DL-1: Lädt konfigurierte Datensätze per HTTPS herunter:
   GHCNm v4 (QCU + QCF), ERSST v5, GHCN-Daily (Stationsliste + ausgewählte Stationen),
   DWD (Monats- und Tageswerte, Gebietsmittel für Temperatur und Niederschlag), Vergleichsreihen (GISTEMP, ggf. HadCRUT5, Berkeley Earth).
-- F-DL-2: Ablage unter `daten/roh/<datensatz>/`, Archive werden entpackt.
+- F-DL-2: Ablage unter `daten/roh/<datensatz>/` im Originalformat. Archive (`.tar.gz`, `.zip`, `.gz`)
+  werden **nicht entpackt** (spart Speicherplatz, z. B. GHCNm 45 MB statt 210 MB), siehe NF-6.
 - F-DL-3: Bereits vorhandene, unveränderte Dateien werden nicht erneut übertragen (siehe F-DL-9), `--erzwingen` erzwingt Neuladen.
 - F-DL-4: Fortschrittsanzeige, Retry bei Netzwerkfehlern, parallele Downloads für viele kleine Dateien (ERSST, DWD).
 - F-DL-5: Ein Manifest (`daten/roh/manifest.json`) protokolliert Quelle, URL, Download-Zeitpunkt, SHA-256 – für Reproduzierbarkeit.
@@ -229,7 +230,19 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
 - F-IO-3: Parser GHCN-Daily `.dly` → Long-Format `stations_id, datum, element, wert, flags`.
 - F-IO-4: Parser DWD (Stationslisten, Monats-/Tageswerte, Gebietsmittel), inkl. Zusammenführung `historical` + `recent`.
 - F-IO-5: Parser Vergleichsreihen (GISTEMP-CSV, ggf. HadCRUT5/Berkeley Earth).
-- F-IO-6: Zwischenspeicherung als Parquet (tabellarisch) bzw. NetCDF/Zarr (gegittert) unter `daten/aufbereitet/`.
+- F-IO-6: Parser lesen über `klima.archiv` direkt aus den Archiven – als Datenstrom im Arbeitsspeicher,
+  ohne temporäre Dateien.
+- F-IO-6a: `klima aufbereiten` parst jeden Rohdatensatz **einmal vollständig** und legt ihn unter
+  `daten/aufbereitet/` ab:
+  - **tabellarische Daten als Parquet** (Stationen, Messreihen, Vergleichsreihen, DWD), z. B.
+    `ghcnm_qcu_stationen.parquet`, `ghcnm_qcu_monatswerte.parquet`;
+    sortiert nach Station und Zeit, passende Datentypen (`float32`, Kategorien für Flags), komprimiert;
+  - **gegitterte Daten als NetCDF** (ERSST, eigene Gitterergebnisse), eine komprimierte Datei pro Datensatz –
+    für `xarray`; per `to_dataframe()` jederzeit als pandas-Tabelle verfügbar.
+- F-IO-6b: Beim Einlesen werden nur die benötigten Spalten und Zeilen geladen
+  (Parquet-Filter, z. B. `filters=[("jahr", ">=", 1951), ("stations_id", "in", [...])]`; bei NetCDF `sel()`).
+- F-IO-6c: Jede aufbereitete Datei enthält in ihren Metadaten die SHA-256 der Quelldatei(en) aus dem Manifest.
+  `klima.einlesen` erkennt veraltete Dateien und bereitet automatisch neu auf.
 - F-IO-7: Einheitliche Lade-API für Notebooks, z. B. `klima.einlesen.ghcnm(variante="qcf")`.
 
 ### 4.3 Analyse
@@ -281,6 +294,9 @@ Hovern oder Auswählen echten Mehrwert bringt.
 - NF-1: Reproduzierbar – gleiche Rohdaten + gleiche Konfiguration → gleiches Ergebnis.
 - NF-2: Läuft auf einem normalen Laptop; große Datensätze (GHCN-Daily, Stundenwerte) nur gefiltert laden.
 - NF-3: Rohdaten werden nie verändert; alle Ableitungen landen in `daten/aufbereitet/`.
+- NF-6: Rohdaten bleiben als Archiv auf der Festplatte und sind die unveränderliche Quelle. Entpackt wird nur
+  im Arbeitsspeicher (gestreamt, ohne temporäre Dateien) beim Aufbereiten; Auswertungen lesen aus den
+  Parquet-/NetCDF-Dateien in `daten/aufbereitet/` jeweils nur den benötigten Ausschnitt. (Messung: GHCNm-QCU, 1,48 Mio. Zeilen, 1,9 s, max. 29 MB RAM.)
 - NF-4: Kernfunktionen (Parser, Anomalie, Gitterung, Gewichtung, Kenntage, Niederschlagsindizes) mit `pytest` getestet.
 - NF-5: **Durchgängig Deutsch**: Bezeichner (Module, Funktionen, Variablen, Spalten), Kommentare,
   Docstrings, CLI, Fehlermeldungen, Dokumentation, Notebooks und Grafiken.
@@ -319,6 +335,7 @@ klimadaten-auswertung/
 │   ├── kommandozeile.py      # Einstiegspunkt `klima`
 │   ├── herunterladen.py      # Download-Tool
 │   ├── einlesen.py           # Lade-API für Notebooks
+│   ├── archiv.py             # Lesen direkt aus .tar.gz/.zip/.gz im Arbeitsspeicher
 │   ├── parser/               # ghcnm, ghcnd, ersst, dwd, vergleichsreihen
 │   ├── anomalien.py          # Referenzperiode, Anomalien (absolut und relativ)
 │   ├── gitter.py             # Gitterung, Land-See-Maske, Flächengewichtung
@@ -359,6 +376,8 @@ klimadaten-auswertung/
 | E-8 | Niederschlag | **Wird mit ausgewertet** (Abschnitt 3.3) |
 | E-9 | Referenzperiode | Standard **1951–1980**, konfigurierbar |
 | E-10 | Versionsverwaltung | Git, GitHub-Repository `steffenb-dev/klimadaten-auswertung` |
+| E-11 | Datenhaltung | Rohdaten als Archiv; aufbereitet als **Parquet** (tabellarisch) bzw. **NetCDF** (Gitter) |
+| E-12 | ERSST-Rohdaten | Einzeldateien unverändert wie von NOAA geliefert (keine Umverpackung) |
 
 ## 10. Offene Fragen
 

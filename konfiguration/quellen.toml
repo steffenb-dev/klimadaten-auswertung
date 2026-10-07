@@ -11,7 +11,9 @@
 # Weitere Schlüssel:
 #   beschreibung  Kurzbeschreibung für `klima laden --liste`
 #   standard      true = wird ohne Angabe eines Datensatzes geladen
-#   entpacken     true = .tar.gz-/.zip-Archive nach dem Download entpacken
+#
+# Archive (.tar.gz, .zip, .gz) werden nicht entpackt, sondern bei der Auswertung
+# direkt im Arbeitsspeicher gelesen (klima.archiv).
 #
 # Geprüft am 2026-10-07, Details siehe SPEC.md Abschnitt 2.7.
 
@@ -21,21 +23,18 @@
 beschreibung = "GHCN-Monthly v4, Temperatur, unbereinigt (QCU)"
 typ = "datei"
 urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qcu.tar.gz"]
-entpacken = true
 standard = true
 
 [ghcnm_qcf]
 beschreibung = "GHCN-Monthly v4, Temperatur, homogenisiert (QCF)"
 typ = "datei"
 urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qcf.tar.gz"]
-entpacken = true
 standard = true
 
 [ghcnm_qfe]
 beschreibung = "GHCN-Monthly v4, homogenisiert + Lücken geschätzt, nur 1961–2010 (QFE)"
 typ = "datei"
 urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qfe.tar.gz"]
-entpacken = true
 standard = false
 
 # --- Ozean -------------------------------------------------------------------

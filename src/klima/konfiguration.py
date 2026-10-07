@@ -38,7 +38,6 @@ class Datensatz:
     url: str | None = None
     muster: str | None = None
     standard: bool = False
-    entpacken: bool = False
     _muster_kompiliert: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -82,7 +81,6 @@ def _datensatz_aus_eintrag(name: str, eintrag: dict) -> Datensatz:
         url=eintrag.get("url"),
         muster=eintrag.get("muster"),
         standard=bool(eintrag.get("standard", False)),
-        entpacken=bool(eintrag.get("entpacken", False)),
         _muster_kompiliert=muster_kompiliert,
     )
 

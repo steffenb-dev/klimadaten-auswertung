@@ -6,6 +6,8 @@ Funktionen (siehe SPEC.md, Abschnitt 4.1):
 - Fortsetzen abgebrochener Downloads über HTTP-Range
 - Wiederholung bei Netzwerk- und Serverfehlern
 - Manifest mit URL, Zeitpunkt, Größe und SHA-256 jeder Datei
+
+Archive werden bewusst nicht entpackt; gelesen wird direkt aus dem Archiv (siehe `klima.archiv`).
 """
 
 from __future__ import annotations
@@ -13,11 +15,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
-import tarfile
 import threading
 import time
-import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,9 +28,7 @@ from tqdm import tqdm
 
 from klima.konfiguration import Datensatz
 
-BENUTZER_AGENT = (
-    "klimadaten-auswertung/0.1"
-)
+BENUTZER_AGENT = "klimadaten-auswertung/0.1"
 MAX_VERSUCHE = 4
 WARTEZEIT_BASIS_S = 2.0
 BLOCKGROESSE = 1 << 20
@@ -369,44 +366,5 @@ class Lader:
             "last_modified": last_modified,
             "geladen_am": datetime.now(UTC).isoformat(timespec="seconds"),
         }
-        if datensatz.entpacken and _ist_archiv(ziel):
-            _entferne_alte_entpackung(ziel.parent, (alt or {}).get("entpackt", []))
-            eintrag["entpackt"] = entpacken(ziel, ziel.parent)
         self.manifest.setze(url, eintrag)
         return Ergebnis(url, ziel, status)
-
-
-# --- Entpacken -----------------------------------------------------------------
-
-
-def _ist_archiv(pfad: Path) -> bool:
-    return pfad.name.endswith((".tar.gz", ".tgz", ".tar", ".zip"))
-
-
-def entpacken(archiv: Path, ziel: Path) -> list[str]:
-    """Entpackt ein Archiv sicher nach `ziel` und gibt die obersten Einträge zurück."""
-    if archiv.name.endswith(".zip"):
-        with zipfile.ZipFile(archiv) as zip_archiv:
-            namen = zip_archiv.namelist()
-            for name in namen:
-                if PurePosixPath(name).is_absolute() or ".." in PurePosixPath(name).parts:
-                    raise ValueError(f"Unsicherer Pfad im Archiv {archiv.name}: {name}")
-            zip_archiv.extractall(ziel)
-    else:
-        with tarfile.open(archiv) as tar_archiv:
-            namen = tar_archiv.getnames()
-            # Filter "data" verhindert Pfade außerhalb von `ziel`, Gerätedateien u. Ä.
-            tar_archiv.extractall(ziel, filter="data")
-    return sorted({PurePosixPath(n).parts[0] for n in namen if PurePosixPath(n).parts})
-
-
-def _entferne_alte_entpackung(ordner: Path, eintraege: list[str]) -> None:
-    """Entfernt Dateien/Ordner einer früheren Entpackung, damit keine veralteten Stände bleiben."""
-    for name in eintraege:
-        pfad = ordner / name
-        if pfad.resolve().parent != ordner.resolve():
-            continue
-        if pfad.is_dir():
-            shutil.rmtree(pfad)
-        else:
-            pfad.unlink(missing_ok=True)

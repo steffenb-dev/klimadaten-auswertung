@@ -20,7 +20,7 @@ def test_monatliche_zeitraeume():
     )
     ergebnis = _monatliche_zeitraeume(werte, {"t": "Temperatur", "n": "Niederschlag"})
     a = ergebnis.set_index("stations_id").loc["a"]
-    assert (str(a.von), str(a.bis), a.werte) == ("2000-01", "2001-02", 3)
+    assert (str(a.von.date()), str(a.bis.date()), a.werte) == ("2000-01-01", "2001-02-28", 3)
     assert a.vollstaendigkeit == pd.Series([3 / 14 * 100]).astype("float32")[0]
     assert a.messgroessen == "Temperatur, Niederschlag"
     b = ergebnis.set_index("stations_id").loc["b"]
@@ -34,7 +34,7 @@ def test_stationsuebersicht_aus_aufbereiteten_daten(projekt):  # noqa: F811
     assert set(uebersicht.quelle) == {"GHCNm QCU"}
     hamburg = uebersicht.set_index("stations_id").loc["GM000010147"]
     assert hamburg["name"] == "HAMBURG_FUHLSBUETTEL"
-    assert (str(hamburg.von), str(hamburg.bis)) == ("1950-01", "1990-12")
+    assert (str(hamburg.von.date()), str(hamburg.bis.date())) == ("1950-01-01", "1990-12-31")
     assert hamburg.werte == 24
     assert hamburg.aufloesung == "monatlich"
 
@@ -44,3 +44,18 @@ def test_stationsuebersicht_aus_aufbereiteten_daten(projekt):  # noqa: F811
 
     kennzahlen = zusammenfassung(uebersicht).iloc[0]
     assert (kennzahlen.stationen, kennzahlen.laender) == (2, 2)
+
+
+def test_taegliche_zeitraeume():
+    from klima.bestand import _taegliche_zeitraeume
+
+    werte = pd.DataFrame(
+        {
+            "stations_id": ["a"] * 3,
+            "datum": pd.to_datetime(["2024-02-28", "2024-02-29", "2024-03-02"]),
+            "t": [1.0, 2.0, 3.0],
+        }
+    )
+    a = _taegliche_zeitraeume(werte, {"t": "Temperatur"}).iloc[0]
+    assert (str(a.von.date()), str(a.bis.date()), a.werte) == ("2024-02-28", "2024-03-02", 3)
+    assert a.vollstaendigkeit == 75.0  # 3 von 4 Tagen

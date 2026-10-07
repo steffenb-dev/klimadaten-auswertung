@@ -194,6 +194,15 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
 | CDD | längste Trockenperiode (aufeinanderfolgende Tage `< 1 mm`) |
 | CWD | längste Nassperiode (aufeinanderfolgende Tage `≥ 1 mm`) |
 
+### 3.3a Tageswerte: Gebietsmittel und Schaltjahre
+
+- Tägliches Gebietsmittel wie bei Monatswerten (Anomalie → 1°-Gitter → Flächengewichtung); das
+  Referenzmittel je Station und Kalendertag wird über 31 Tage zirkulär geglättet.
+- **Schaltjahre**: 365-Tage-Kalender (CF-Konvention `noleap`/`365_day`), jeder Kalendertag hat in jedem
+  Jahr dieselbe Position. Der 29. Februar entfällt in Darstellungen über Tag 1–365; seine Anomalie wird –
+  wie bei den täglichen Klimanormalwerten der NOAA – gegen das Mittel von 28.02. und 01.03. berechnet.
+- Validierung: Monatsmittel des eigenen Tagesmittels vs. offizielles DWD-Gebietsmittel.
+
 ### 3.4 Bekannte Fallstricke, die wir sichtbar machen wollen
 
 - Sich verändernde Stationsabdeckung über die Zeit (vor 1900 sehr dünn, v. a. Südhalbkugel und Arktis).
@@ -282,6 +291,7 @@ Hovern oder Auswählen echten Mehrwert bringt.
 | F-VIS-6 | QCU vs. QCF Differenzplot | ✓ | ✓ |
 | F-VIS-7 | Klimakenntage pro Jahr (Balken + Trend) | ✓ | ✓ |
 | F-VIS-8 | Deutschlandkarte mit DWD-Stationen | ✓ | ✓ |
+| F-VIS-12 | Jahresverlauf: Tagesmittel Tag 1–365, jedes Jahr eine dünne Linie, letzte Jahre farbig, Referenzmittel | ✓ | ✓ (Hover: Jahr, Datum, Wert) |
 | F-VIS-9 | Niederschlag: Jahres-/Saisonsummen als relative Anomalie, Starkregentage, Trockenperioden | ✓ | ✓ |
 
 - F-VIS-10: Export statisch als PNG/SVG, interaktiv als eigenständige HTML-Datei nach `ausgabe/`.

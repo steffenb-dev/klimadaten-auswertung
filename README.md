@@ -63,10 +63,16 @@ Zeitraum und Vollständigkeit. In Notebooks: `klima.bestand.stationsuebersicht(.
 uv run klima analysieren deutschland    # Temperatur/Niederschlag DE, eigene Berechnung vs. DWD
 uv run klima analysieren station 3987   # DWD-Station per ID …
 uv run klima analysieren station Potsdam   # … oder per Namensteil
+uv run klima analysieren jahresverlauf   # Tagesmitteltemperatur DE, jedes Jahr eine Linie
 ```
 
 Grafiken landen in `ausgabe/` – statisch als PNG/SVG, interaktiv als HTML (plotly).
 Optionen wie `--trend-von`, `--referenz-von`/`--referenz-bis` siehe `--help`.
+
+## Dokumentation einzelner Auswertungen
+
+- [Jahresverlauf der Tagesmitteltemperatur in Deutschland](docs/jahresverlauf_deutschland.md) –
+  Methode, Umgang mit Schaltjahren, Validierung gegen DWD, Extremtage
 
 ## Notebooks
 

@@ -239,7 +239,18 @@ _MESSGROESSEN_KURZ = {
     "Temperatur": "T",
     "Niederschlag": "N",
     "Sonnenschein": "S",
+    "Schneehöhe": "Sh",
 }
+
+
+def _datum_je_aufloesung(tabelle, spalte: str):
+    """Monatswerte als `JJJJ-MM`, Tageswerte als `TT.MM.JJJJ`."""
+    monatlich = tabelle["aufloesung"] == "monatlich"
+    return (
+        tabelle[spalte]
+        .dt.strftime("%d.%m.%Y")
+        .where(~monatlich, tabelle[spalte].dt.strftime("%Y-%m"))
+    )
 
 
 @app.command()
@@ -250,7 +261,7 @@ def stationen(
     ] = None,
     quelle: Annotated[
         list[str] | None,
-        typer.Option(help="ghcnm_qcu, ghcnm_qcf, ghcnm_qfe, dwd_monat; mehrfach möglich."),
+        typer.Option(help="ghcnm_qcu, ghcnm_qcf, ghcnm_qfe, dwd_monat, dwd_tag; mehrfach möglich."),
     ] = None,
     name: Annotated[str | None, typer.Option(help="Teil des Stationsnamens.")] = None,
     aufloesung: Annotated[
@@ -275,7 +286,7 @@ def stationen(
     for zeile in zusammenfassung(uebersicht).itertuples():
         typer.echo(
             f"  {zeile.quelle:<10} {zeile.aufloesung:<10} {zeile.stationen:>6} Stationen in "
-            f"{zeile.laender:>3} Ländern, {zeile.von}–{zeile.bis}, "
+            f"{zeile.laender:>3} Ländern, {zeile.von:%d.%m.%Y}–{zeile.bis:%d.%m.%Y}, "
             f"{f'{zeile.werte:,}'.replace(',', '.')} Werte"
         )
 
@@ -284,8 +295,8 @@ def stationen(
         region=uebersicht["region"].fillna(""),
         vollst=uebersicht["vollstaendigkeit"].map(lambda v: f"{v:.0f} %"),
         messgroessen=uebersicht["messgroessen"].replace(_MESSGROESSEN_KURZ, regex=True),
-        von=uebersicht["von"].astype(str),
-        bis=uebersicht["bis"].astype(str),
+        von=_datum_je_aufloesung(uebersicht, "von"),
+        bis=_datum_je_aufloesung(uebersicht, "bis"),
     )[["quelle", "stations_id", "name", "land", "region", "aufloesung", "messgroessen",
        "von", "bis", "vollst"]]  # fmt: skip
     anzeige.columns = ["Quelle", "ID", "Name", "Land", "Region", "Auflösung", "Messgrößen",
@@ -296,7 +307,8 @@ def stationen(
     if gekuerzt:
         typer.echo(f"… {len(anzeige) - anzahl} weitere Zeilen (--anzahl 0 zeigt alle)")
     typer.echo(
-        "Messgrößen: T Temperatur, Tmax/Tmin Maximum/Minimum, N Niederschlag, S Sonnenschein"
+        "Messgrößen: T Temperatur, Tmax/Tmin Maximum/Minimum, N Niederschlag, S Sonnenschein, "
+        "Sh Schneehöhe"
     )
 
     if export:
@@ -310,3 +322,24 @@ def stationen(
         else:
             raise typer.BadParameter("Export nur als .csv oder .parquet.")
         typer.echo(f"\n{len(uebersicht)} Zeilen gespeichert: {ziel}")
+
+
+@analysieren_app.command("jahresverlauf")
+def analysieren_jahresverlauf(
+    hervorheben: Annotated[int, typer.Option(help="Anzahl der letzten Jahre in Farbe.")] = 5,
+    ab_jahr: Annotated[int, typer.Option(help="Erstes dargestelltes Jahr.")] = 1881,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Tagesmitteltemperatur Deutschland: jedes Jahr eine Linie über Tag 1–365."""
+    from klima import auswertungen
+
+    ergebnis = auswertungen.jahresverlauf_deutschland(
+        hervorheben=hervorheben,
+        ab_jahr=ab_jahr,
+        referenz=_referenz(referenz_von, referenz_bis),
+    )
+    matrix = ergebnis.tabellen["jahresmatrix"]
+    typer.echo(f"{len(matrix)} Jahre ({matrix.index.min()}–{matrix.index.max()}) dargestellt")
+    for pfad in ergebnis.dateien:
+        typer.echo(f"  {pfad}")

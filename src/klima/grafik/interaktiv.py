@@ -146,3 +146,78 @@ def speichern(fig: go.Figure, name: str, unterordner: str = "") -> Path:
     pfad = stil.ausgabeverzeichnis(unterordner) / f"{name}.html"
     fig.write_html(pfad, include_plotlyjs="cdn", config={"locale": "de"})
     return pfad
+
+
+def jahresverlauf(
+    matrix: pd.DataFrame,
+    titel: str,
+    hervorheben: list[int],
+    einheit: str = "°C",
+    y_beschriftung: str = "Tagesmitteltemperatur",
+    untertitel: str | None = None,
+    referenz: pd.Series | None = None,
+    referenz_name: str = "Mittel",
+    bezeichnungen: dict[int, str] | None = None,
+) -> go.Figure:
+    """Interaktiver Jahresverlauf: Überfahren zeigt Jahr, Datum und Wert jeder Linie."""
+    from klima.jahresverlauf import MONATSANFAENGE, MONATSNAMEN
+
+    bezeichnungen = bezeichnungen or {}
+    tage = matrix.columns.to_numpy()
+    # Datum (TT.MM.) je Tag 1–365 im Kalender eines Nicht-Schaltjahres
+    daten = pd.date_range("2001-01-01", periods=365).strftime("%d.%m.").to_numpy()
+    fig = go.Figure()
+
+    uebrige = [j for j in matrix.index if j not in hervorheben]
+    for i, jahr in enumerate(uebrige):
+        fig.add_trace(
+            go.Scatter(
+                x=tage, y=matrix.loc[jahr].to_numpy(), mode="lines", customdata=daten,
+                line={"color": "rgba(156,154,147,0.35)", "width": 0.8},
+                name=f"{min(uebrige)}–{max(uebrige)}", legendgroup="uebrige",
+                showlegend=i == 0,
+                hovertemplate=f"<b>{jahr}</b> %{{customdata}}: %{{y:.1f}} {einheit}<extra></extra>",
+            )
+        )  # fmt: skip
+    if referenz is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=referenz.index, y=referenz.to_numpy(), mode="lines", name=referenz_name,
+                customdata=daten, line={"color": stil.TINTE, "width": 2},
+                hovertemplate=(
+                    f"{referenz_name} %{{customdata}}: %{{y:.1f}} {einheit}<extra></extra>"
+                ),
+            )
+        )  # fmt: skip
+    farben = stil.farben_fuer([str(j) for j in hervorheben])
+    for jahr in hervorheben:
+        name = bezeichnungen.get(jahr, str(jahr))
+        fig.add_trace(
+            go.Scatter(
+                x=tage, y=matrix.loc[jahr].to_numpy(), mode="lines", name=name, customdata=daten,
+                line={"color": farben[str(jahr)], "width": 2.2},
+                hovertemplate=f"<b>{jahr}</b> %{{customdata}}: %{{y:.1f}} {einheit}<extra></extra>",
+            )
+        )  # fmt: skip
+
+    fig.update_layout(
+        hovermode="closest",
+        height=640,
+        legend={"orientation": "h", "y": -0.12, "x": 0},
+        xaxis={
+            "range": [1, 365],
+            "tickvals": [a + 14.5 for a in MONATSANFAENGE],
+            "ticktext": MONATSNAMEN,
+            "ticks": "",
+            "showgrid": False,
+        },
+        yaxis={
+            "title": f"{y_beschriftung} ({einheit})",
+            "gridcolor": stil.GITTERLINIE,
+            "showgrid": True,
+            "zeroline": False,
+        },
+    )
+    for anfang in MONATSANFAENGE[1:]:
+        fig.add_vline(x=anfang, line={"color": stil.GITTERLINIE, "width": 1}, layer="below")
+    return _grundlayout(fig, titel, untertitel)

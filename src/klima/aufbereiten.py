@@ -96,6 +96,10 @@ def _dwd_monatswerte(dateien: list[Path]) -> list[Ausgabe]:
     return [Ausgabe("monatswerte", dwd.lies_monatswerte_alle(dateien))]
 
 
+def _dwd_tageswerte(dateien: list[Path]) -> list[Ausgabe]:
+    return [Ausgabe("tageswerte", dwd.lies_tageswerte_alle(dateien))]
+
+
 AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "ghcnm_qcu": _ghcnm,
     "ghcnm_qcf": _ghcnm,
@@ -107,11 +111,13 @@ AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "dwd_gebietsmittel_temperatur": _dwd_gebietsmittel("temperatur"),
     "dwd_gebietsmittel_niederschlag": _dwd_gebietsmittel("niederschlag"),
     "dwd_monatswerte": _dwd_monatswerte,
+    "dwd_tageswerte": _dwd_tageswerte,
 }
 
 # Aufbereitete Datensätze, die aus mehreren Rohdatensätzen entstehen; sonst gilt der eigene Name
 QUELLDATENSAETZE: dict[str, tuple[str, ...]] = {
     "dwd_monatswerte": ("dwd_monat_historisch", "dwd_monat_aktuell"),
+    "dwd_tageswerte": ("dwd_tag_historisch", "dwd_tag_aktuell"),
 }
 
 

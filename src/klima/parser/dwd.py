@@ -98,16 +98,45 @@ MONATSWERTE_SPALTEN = {
     "QN_4": "qn_temperatur",  # Qualitätsniveau der Temperatur-/Sonnenwerte
     "QN_6": "qn_niederschlag",  # Qualitätsniveau des Niederschlags
 }
-_MONATSDATEI = re.compile(r"monatswerte_KL_(\d{5})_(?:(\d{8})_(\d{8})_hist|akt)\.zip")
 
 
-def lies_monatswerte_station(pfad: Path) -> pd.DataFrame:
-    """Monatswerte einer Station aus `monatswerte_KL_*.zip` (historisch oder aktuell)."""
-    with oeffne_text(pfad, "produkt_klima_monat_*.txt", encoding=KODIERUNG) as datei:
+# DWD-Kennung -> eigene Spalte (Tageswerte, Klima-Kollektiv KL)
+TAGESWERTE_SPALTEN = {
+    "TMK": "tmittel",  # Tagesmittel der Lufttemperatur, °C
+    "TXK": "tmax",  # Tagesmaximum, °C
+    "TNK": "tmin",  # Tagesminimum in 2 m, °C
+    "TGK": "tmin_boden",  # Minimum in 5 cm über dem Boden, °C
+    "RSK": "niederschlag",  # Tagessumme, mm
+    "RSKF": "niederschlagsform",  # Kennung der Niederschlagsform
+    "SDK": "sonnenschein",  # Sonnenscheindauer, Stunden
+    "SHK_TAG": "schneehoehe",  # Schneehöhe, cm
+    "QN_3": "qn_wind",  # Qualitätsniveau Wind
+    "QN_4": "qn_klima",  # Qualitätsniveau der übrigen Größen
+}
+
+_STATIONSDATEI = re.compile(r"(?:monats|tages)werte_KL_(\d{5})_(?:(\d{8})_(\d{8})_hist|akt)\.zip")
+
+
+def _lies_produkt(pfad: Path, muster: str) -> pd.DataFrame:
+    with oeffne_text(pfad, muster, encoding=KODIERUNG) as datei:
         tabelle = pd.read_csv(
             datei, sep=";", skipinitialspace=True, na_values=[FEHLWERT, str(FEHLWERT)]
         )
     tabelle.columns = tabelle.columns.str.strip()
+    return tabelle
+
+
+def _uebernehme_spalten(werte: pd.DataFrame, tabelle: pd.DataFrame, spalten: dict) -> None:
+    for dwd_name, name in spalten.items():
+        spalte = (
+            tabelle[dwd_name] if dwd_name in tabelle else pd.Series(float("nan"), tabelle.index)
+        )
+        werte[name] = spalte.astype("float32")
+
+
+def lies_monatswerte_station(pfad: Path) -> pd.DataFrame:
+    """Monatswerte einer Station aus `monatswerte_KL_*.zip` (historisch oder aktuell)."""
+    tabelle = _lies_produkt(pfad, "produkt_klima_*monat_*.txt")
     beginn = tabelle["MESS_DATUM_BEGINN"].astype(str)
     werte = pd.DataFrame(
         {
@@ -116,16 +145,29 @@ def lies_monatswerte_station(pfad: Path) -> pd.DataFrame:
             "monat": beginn.str[4:6].astype("int8"),
         }
     )
-    for dwd_name, name in MONATSWERTE_SPALTEN.items():
-        spalte = (
-            tabelle[dwd_name] if dwd_name in tabelle else pd.Series(float("nan"), tabelle.index)
-        )
-        werte[name] = spalte.astype("float32")
+    _uebernehme_spalten(werte, tabelle, MONATSWERTE_SPALTEN)
     return werte.astype({"qn_temperatur": "Int8", "qn_niederschlag": "Int8"})
 
 
-def lies_monatswerte_alle(dateien: list[Path]) -> pd.DataFrame:
-    """Alle Stationen, historische und aktuelle Dateien zusammengeführt.
+def lies_tageswerte_station(pfad: Path) -> pd.DataFrame:
+    """Tageswerte einer Station aus `tageswerte_KL_*.zip` (historisch oder aktuell)."""
+    tabelle = _lies_produkt(pfad, "produkt_klima_*tag_*.txt")
+    datum = pd.to_datetime(tabelle["MESS_DATUM"].astype(str), format="%Y%m%d")
+    werte = pd.DataFrame(
+        {
+            "stations_id": tabelle["STATIONS_ID"].astype(str).str.zfill(5),
+            "datum": datum,
+            "jahr": datum.dt.year.astype("int16"),
+        }
+    )
+    _uebernehme_spalten(werte, tabelle, TAGESWERTE_SPALTEN)
+    return werte.astype(
+        {"niederschlagsform": "Int8", "schneehoehe": "Int16", "qn_wind": "Int8", "qn_klima": "Int8"}
+    )
+
+
+def _zusammenfuehren(dateien: list[Path], lesen, schluessel: list[str]) -> pd.DataFrame:
+    """Historische und aktuelle Stationsdateien zusammenführen.
 
     Bei Überschneidungen haben die geprüften historischen Werte Vorrang. Liegen für eine
     Station mehrere historische Dateien vor, gilt die mit dem spätesten Enddatum.
@@ -133,7 +175,7 @@ def lies_monatswerte_alle(dateien: list[Path]) -> pd.DataFrame:
     historisch: dict[str, tuple[str, Path]] = {}
     aktuell: list[Path] = []
     for pfad in dateien:
-        treffer = _MONATSDATEI.fullmatch(pfad.name)
+        treffer = _STATIONSDATEI.fullmatch(pfad.name)
         if not treffer:
             raise ValueError(f"Unerwarteter Dateiname: {pfad.name}")
         stations_id, _, ende = treffer.groups()
@@ -142,10 +184,20 @@ def lies_monatswerte_alle(dateien: list[Path]) -> pd.DataFrame:
         elif stations_id not in historisch or ende > historisch[stations_id][0]:
             historisch[stations_id] = (ende, pfad)
 
-    teile = [lies_monatswerte_station(p) for _, p in sorted(historisch.values(), key=str)]
-    teile += [lies_monatswerte_station(p) for p in sorted(aktuell)]
+    teile = [lesen(p) for _, p in sorted(historisch.values(), key=str)]
+    teile += [lesen(p) for p in sorted(aktuell)]
     alle = pd.concat(teile, ignore_index=True)
     # Historische Teile stehen vorn -> "first" behält bei Dubletten den geprüften Wert
-    alle = alle.drop_duplicates(["stations_id", "jahr", "monat"], keep="first")
-    alle = alle.sort_values(["stations_id", "jahr", "monat"], ignore_index=True)
+    alle = alle.drop_duplicates(["stations_id", *schluessel], keep="first")
+    alle = alle.sort_values(["stations_id", *schluessel], ignore_index=True)
     return alle.astype({"stations_id": "category"})
+
+
+def lies_monatswerte_alle(dateien: list[Path]) -> pd.DataFrame:
+    """Monatswerte aller Stationen, historisch und aktuell zusammengeführt."""
+    return _zusammenfuehren(dateien, lies_monatswerte_station, ["jahr", "monat"])
+
+
+def lies_tageswerte_alle(dateien: list[Path]) -> pd.DataFrame:
+    """Tageswerte aller Stationen, historisch und aktuell zusammengeführt."""
+    return _zusammenfuehren(dateien, lies_tageswerte_station, ["datum"])

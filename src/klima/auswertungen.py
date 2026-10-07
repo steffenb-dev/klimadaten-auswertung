@@ -219,3 +219,63 @@ def station(
             f"{datei}_niederschlag", unterordner,
         )  # fmt: skip
     return ergebnis
+
+
+def jahresverlauf_deutschland(
+    hervorheben: int = 5,
+    ab_jahr: int = 1881,
+    mindestzellen: int = 15,
+    referenz: tuple[int, int] | None = None,
+    unterordner: str = "deutschland",
+) -> Ergebnis:
+    """Tagesmitteltemperatur Deutschland: jedes Jahr eine Linie über Tag 1–365.
+
+    Alle Jahre ab `ab_jahr` dünn, die letzten `hervorheben` Jahre farbig. Ein Jahr wird
+    gezeigt, wenn an jedem Tag mindestens `mindestzellen` 1°-Gitterzellen besetzt sind;
+    das laufende (unvollständige) Jahr wird bis zum letzten Messtag gezeigt.
+    """
+    from klima import jahresverlauf as jv
+
+    referenz = referenz or standard_referenzperiode()
+    ergebnis = Ergebnis()
+    tagesmittel = jv.deutschland_tagesmittel(referenz=referenz)
+    ergebnis.tabellen["tagesmittel"] = tagesmittel
+
+    letztes_jahr = int(tagesmittel["jahr"].max())
+    jahre = [j for j in jv.vollstaendige_jahre(tagesmittel, mindestzellen) if j >= ab_jahr]
+    laufend = letztes_jahr not in jahre
+    if laufend:
+        jahre.append(letztes_jahr)
+    matrix = jv.jahresmatrix(tagesmittel).loc[jahre]
+    ergebnis.tabellen["jahresmatrix"] = matrix
+
+    markiert = jahre[-hervorheben:]
+    letzter_tag = tagesmittel["datum"].max()
+    bezeichnungen = {letztes_jahr: f"{letztes_jahr} (bis {letzter_tag:%d.%m.})"} if laufend else {}
+    referenzlinie = (
+        tagesmittel[tagesmittel["tag"] != jv.SCHALTTAG].groupby("tag")["referenz"].first()
+    )
+    referenz_name = f"Mittel {referenz[0]}–{referenz[1]}"
+
+    vollstaendig = len(jahre) - int(laufend)
+    untertitel = (
+        f"DWD-Stationen, eigenes Gebietsmittel; {vollstaendig} vollständige Jahre "
+        f"{jahre[0]}–{jahre[-1 - int(laufend)]}"
+        + (f" + {letztes_jahr} bis {letzter_tag:%d.%m.}" if laufend else "")
+        + "; 365-Tage-Kalender (29. Februar ausgelassen)"
+    )
+    titel = "Tagesmitteltemperatur in Deutschland – jedes Jahr eine Linie"
+    argumente = dict(
+        titel=titel, hervorheben=markiert, untertitel=untertitel, referenz=referenzlinie,
+        referenz_name=referenz_name, bezeichnungen=bezeichnungen,
+    )  # fmt: skip
+    ergebnis.dateien += statisch.speichern(
+        statisch.jahresverlauf(matrix, quelle=QUELLE_DWD, **argumente),
+        "jahresverlauf_temperatur", unterordner,
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.jahresverlauf(matrix, **argumente), "jahresverlauf_temperatur", unterordner
+        )
+    )
+    return ergebnis

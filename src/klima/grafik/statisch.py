@@ -216,3 +216,56 @@ def speichern(
         pfade.append(pfad)
     plt.close(fig)
     return pfade
+
+
+def jahresverlauf(
+    matrix: pd.DataFrame,
+    titel: str,
+    hervorheben: list[int],
+    einheit: str = "°C",
+    y_beschriftung: str = "Tagesmitteltemperatur",
+    untertitel: str | None = None,
+    referenz: pd.Series | None = None,
+    referenz_name: str = "Mittel",
+    bezeichnungen: dict[int, str] | None = None,
+    quelle: str | None = None,
+) -> Figure:
+    """Ein Jahr je Linie über Tag 1–365: alle Jahre dünn grau, ausgewählte Jahre farbig.
+
+    `matrix`: Jahre als Zeilen, Tage 1–365 als Spalten (siehe `jahresverlauf.jahresmatrix`).
+    `referenz`: optionale Vergleichslinie (Index = Tag 1–365), z. B. Mittel 1951–1980.
+    """
+    from klima.jahresverlauf import MONATSANFAENGE, MONATSNAMEN
+
+    stil.anwenden()
+    bezeichnungen = bezeichnungen or {}
+    fig, ax = plt.subplots(figsize=(12, 6.2), layout="constrained")
+    tage = matrix.columns.to_numpy()
+
+    uebrige = [j for j in matrix.index if j not in hervorheben]
+    for jahr in uebrige:
+        ax.plot(tage, matrix.loc[jahr].to_numpy(), color="#9c9a93", lw=0.45, alpha=0.35, zorder=1)
+    if uebrige:
+        ax.plot([], [], color="#9c9a93", lw=1.2,
+                label=f"{min(uebrige)}–{max(uebrige)} ({len(uebrige)} Jahre)")  # fmt: skip
+    if referenz is not None:
+        ax.plot(referenz.index, referenz.to_numpy(), color=stil.TINTE, lw=1.6, zorder=3,
+                label=referenz_name)  # fmt: skip
+
+    farben = stil.farben_fuer([str(j) for j in hervorheben])
+    for jahr in hervorheben:
+        ax.plot(tage, matrix.loc[jahr].to_numpy(), color=farben[str(jahr)], lw=1.5, zorder=4,
+                label=bezeichnungen.get(jahr, str(jahr)))  # fmt: skip
+
+    ax.set_xlim(1, 365)
+    ax.set_xticks(MONATSANFAENGE)
+    ax.set_xticklabels([])
+    ax.set_xticks([a + 14.5 for a in MONATSANFAENGE], MONATSNAMEN, minor=True)
+    ax.tick_params(axis="x", which="minor", length=0)
+    ax.grid(axis="x", which="major", color=stil.GITTERLINIE, lw=0.6)
+    ax.yaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
+    ax.set_ylabel(f"{y_beschriftung} ({einheit})")
+    ax.legend(loc="upper left", fontsize=9, ncols=2)
+    _titel(ax, titel, untertitel)
+    _quelle(fig, quelle)
+    return fig

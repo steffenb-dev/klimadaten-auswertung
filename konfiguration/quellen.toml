@@ -90,6 +90,20 @@ url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/clim
 muster = 'monatswerte_KL_\d{5}_akt\.zip'
 standard = true
 
+[dwd_tag_historisch]
+beschreibung = "DWD, Tageswerte je Station (Temperatur, Niederschlag u. a.), geprüft, bis Ende Vorjahr"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/daily/kl/historical/"
+muster = 'tageswerte_KL_\d{5}_(?P<beginn>\d{8})_(?P<ende>\d{8})_hist\.zip'
+standard = true
+
+[dwd_tag_aktuell]
+beschreibung = "DWD, Tageswerte je Station, aktuell (ca. letzte 500 Tage), vorläufig geprüft"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/daily/kl/recent/"
+muster = 'tageswerte_KL_\d{5}_akt\.zip'
+standard = true
+
 [dwd_gebietsmittel_temperatur]
 beschreibung = "DWD, Gebietsmittel Lufttemperatur (Deutschland + Bundesländer), monatlich"
 typ = "verzeichnis"

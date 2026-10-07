@@ -33,34 +33,51 @@ DWD_MESSGROESSEN = {
 }
 
 
-def _monatliche_zeitraeume(werte: pd.DataFrame, messgroessen: dict[str, str]) -> pd.DataFrame:
-    """Zeitraum, Anzahl Monate mit Daten und Messgrößen je Station.
+def _zeitraeume(
+    werte: pd.DataFrame, zeitindex: pd.Series, messgroessen: dict[str, str]
+) -> pd.DataFrame:
+    """Kleinster/größter Zeitindex, Anzahl Zeitschritte mit Daten und Messgrößen je Station.
 
-    Ein Monat zählt, wenn mindestens eine der Messgrößen einen Wert hat.
+    Ein Zeitschritt zählt, wenn mindestens eine der Messgrößen einen Wert hat.
     """
     spalten = list(messgroessen)
     vorhanden = werte[spalten].notna()
-    werte = werte[vorhanden.any(axis=1)]
-    vorhanden = vorhanden.loc[werte.index]
-    monatsindex = werte["jahr"].astype(np.int32) * 12 + werte["monat"].astype(np.int32) - 1
-
-    hilfs = pd.DataFrame({"stations_id": werte["stations_id"].astype(str), "index": monatsindex})
+    mit_daten = vorhanden.any(axis=1).to_numpy()
+    stationen = werte["stations_id"].astype(str)[mit_daten]
+    hilfs = pd.DataFrame({"stations_id": stationen, "index": zeitindex[mit_daten]})
     zeitraum = hilfs.groupby("stations_id")["index"].agg(["min", "max", "count"])
-    je_groesse = vorhanden.groupby(hilfs["stations_id"]).any()
+    je_groesse = vorhanden[mit_daten].groupby(stationen).any()
     zeitraum["messgroessen"] = je_groesse.apply(
         lambda zeile: ", ".join(messgroessen[s] for s in spalten if zeile[s]), axis=1
-    )
-
-    zeitraum["von"] = pd.PeriodIndex.from_fields(
-        year=zeitraum["min"] // 12, month=zeitraum["min"] % 12 + 1, freq="M"
-    )
-    zeitraum["bis"] = pd.PeriodIndex.from_fields(
-        year=zeitraum["max"] // 12, month=zeitraum["max"] % 12 + 1, freq="M"
     )
     zeitraum["werte"] = zeitraum["count"]
     zeitraum["vollstaendigkeit"] = (
         zeitraum["count"] / (zeitraum["max"] - zeitraum["min"] + 1) * 100
     ).astype("float32")
+    return zeitraum
+
+
+def _monatliche_zeitraeume(werte: pd.DataFrame, messgroessen: dict[str, str]) -> pd.DataFrame:
+    """Zeiträume aus Monatswerten; `von` = Monatserster, `bis` = Monatsletzter."""
+    monatsindex = werte["jahr"].astype(np.int32) * 12 + werte["monat"].astype(np.int32) - 1
+    zeitraum = _zeitraeume(werte, monatsindex, messgroessen)
+    von = pd.PeriodIndex.from_fields(
+        year=zeitraum["min"] // 12, month=zeitraum["min"] % 12 + 1, freq="M"
+    )
+    bis = pd.PeriodIndex.from_fields(
+        year=zeitraum["max"] // 12, month=zeitraum["max"] % 12 + 1, freq="M"
+    )
+    zeitraum["von"] = von.to_timestamp(how="start").normalize()
+    zeitraum["bis"] = bis.to_timestamp(how="end").normalize()
+    return zeitraum.drop(columns=["min", "max", "count"]).reset_index()
+
+
+def _taegliche_zeitraeume(werte: pd.DataFrame, messgroessen: dict[str, str]) -> pd.DataFrame:
+    """Zeiträume aus Tageswerten (Spalte `datum`)."""
+    tagesindex = (pd.to_datetime(werte["datum"]) - pd.Timestamp("1700-01-01")).dt.days
+    zeitraum = _zeitraeume(werte, tagesindex, messgroessen)
+    zeitraum["von"] = pd.Timestamp("1700-01-01") + pd.to_timedelta(zeitraum["min"], unit="D")
+    zeitraum["bis"] = pd.Timestamp("1700-01-01") + pd.to_timedelta(zeitraum["max"], unit="D")
     return zeitraum.drop(columns=["min", "max", "count"]).reset_index()
 
 
@@ -104,12 +121,37 @@ def _dwd_monat(laendernamen: dict[str, str]) -> pd.DataFrame:
     )
 
 
+DWD_TAG_MESSGROESSEN = {
+    "tmittel": "Temperatur",
+    "tmax": "Temperatur-Maximum",
+    "tmin": "Temperatur-Minimum",
+    "niederschlag": "Niederschlag",
+    "sonnenschein": "Sonnenschein",
+    "schneehoehe": "Schneehöhe",
+}
+
+
+def _dwd_tag(laendernamen: dict[str, str]) -> pd.DataFrame:
+    stationen = einlesen.dwd_stationen("tag")
+    werte = einlesen.dwd_tageswerte(spalten=["stations_id", "datum", *DWD_TAG_MESSGROESSEN])
+    zeitraeume = _taegliche_zeitraeume(werte, DWD_TAG_MESSGROESSEN)
+    tabelle = stationen.drop(columns=["von", "bis"]).merge(zeitraeume, on="stations_id")
+    return tabelle.assign(
+        quelle="DWD",
+        land="GM",
+        land_name=laendernamen.get("GM", "Germany"),
+        region=tabelle["bundesland"].astype(str),
+        aufloesung="täglich",
+    )
+
+
 # Quelle -> Funktion, die die Übersicht für diese Quelle liefert
 QUELLEN: dict[str, Callable[[dict[str, str]], pd.DataFrame]] = {
     "ghcnm_qcu": _ghcnm("qcu"),
     "ghcnm_qcf": _ghcnm("qcf"),
     "ghcnm_qfe": _ghcnm("qfe"),
     "dwd_monat": _dwd_monat,
+    "dwd_tag": _dwd_tag,
 }
 
 
@@ -125,10 +167,11 @@ def stationsuebersicht(
     - `quellen`: Schlüssel aus `QUELLEN`, z. B. `["dwd_monat"]`
     - `laender`: FIPS-Codes (`"GM"`) oder Teile des Ländernamens (`"germ"`)
     - `name`: Teil des Stationsnamens (ohne Groß-/Kleinschreibung)
-    - `aufloesung`: `"monatlich"` (später auch `"täglich"`)
+    - `aufloesung`: `"monatlich"` oder `"täglich"`
 
-    Spalten siehe `SPALTEN`; `von`/`bis` sind Monate (`Period`), `vollstaendigkeit`
-    ist der Anteil der Monate mit Daten zwischen `von` und `bis` in Prozent.
+    Spalten siehe `SPALTEN`; `von`/`bis` sind Daten (bei Monatswerten Monatserster bzw.
+    -letzter), `vollstaendigkeit` ist der Anteil der Zeitschritte (Monate bzw. Tage) mit
+    Daten zwischen `von` und `bis` in Prozent.
     """
     auswahl = list(quellen) if quellen is not None else list(QUELLEN)
     unbekannt = [q for q in auswahl if q not in QUELLEN]

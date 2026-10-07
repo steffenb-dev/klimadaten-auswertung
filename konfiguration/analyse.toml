@@ -1,0 +1,29 @@
+# Standardwerte für die Analysen. Jeder Wert lässt sich per CLI-Option
+# bzw. Funktionsparameter überschreiben.
+
+[anomalien]
+# Referenzperiode wie bei NASA GISTEMP
+referenzperiode = [1951, 1980]
+# Mindestanzahl Jahre mit Daten in der Referenzperiode je Station und Kalendermonat
+mindestjahre_referenz = 20
+
+[gitter]
+# Kantenlänge der Gitterzellen in Grad
+zellgroesse_grad = 5.0
+
+[vollstaendigkeit]
+# Mindestanteil vorhandener Tage, damit ein Jahr in Tageswert-Auswertungen zählt
+mindestanteil_tage = 0.9
+
+[kenntage]
+sommertag_tmax = 25.0
+heisser_tag_tmax = 30.0
+tropennacht_tmin = 20.0
+frosttag_tmin = 0.0
+eistag_tmax = 0.0
+hitzewelle_mindesttage = 3
+
+[niederschlag]
+niederschlagstag_mm = 1.0
+starkniederschlag_mm = [10.0, 20.0]
+perzentil_sehr_nass = 95

@@ -1,0 +1,104 @@
+# Datenquellen für `klima laden`.
+#
+# Jeder Abschnitt beschreibt einen Datensatz. Unterstützte Typen:
+#
+#   typ = "datei"        Feste Liste von URLs (`urls`). Keine zeitliche Einschränkung möglich.
+#   typ = "verzeichnis"  Verzeichnisliste unter `url` wird abgerufen, Dateien werden über den
+#                        regulären Ausdruck `muster` ausgewählt. Enthält das Muster benannte Gruppen
+#                        `jahr` (und optional `monat`) oder `beginn`/`ende` (JJJJMMTT), wirken
+#                        `--von`/`--bis` als Dateiauswahl.
+#
+# Weitere Schlüssel:
+#   beschreibung  Kurzbeschreibung für `klima laden --liste`
+#   standard      true = wird ohne Angabe eines Datensatzes geladen
+#   entpacken     true = .tar.gz-/.zip-Archive nach dem Download entpacken
+#
+# Geprüft am 2026-10-07, Details siehe SPEC.md Abschnitt 2.7.
+
+# --- GHCN-Monthly v4 (Landstationen, Monatsmittel) --------------------------
+
+[ghcnm_qcu]
+beschreibung = "GHCN-Monthly v4, Temperatur, unbereinigt (QCU)"
+typ = "datei"
+urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qcu.tar.gz"]
+entpacken = true
+standard = true
+
+[ghcnm_qcf]
+beschreibung = "GHCN-Monthly v4, Temperatur, homogenisiert (QCF)"
+typ = "datei"
+urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qcf.tar.gz"]
+entpacken = true
+standard = true
+
+[ghcnm_qfe]
+beschreibung = "GHCN-Monthly v4, homogenisiert + Lücken geschätzt, nur 1961–2010 (QFE)"
+typ = "datei"
+urls = ["https://www.ncei.noaa.gov/pub/data/ghcn/v4/ghcnm.tavg.latest.qfe.tar.gz"]
+entpacken = true
+standard = false
+
+# --- Ozean -------------------------------------------------------------------
+
+[ersst_v5]
+beschreibung = "ERSST v5, Meeresoberflächentemperatur, 2°×2°, eine Datei pro Monat"
+typ = "verzeichnis"
+url = "https://www.ncei.noaa.gov/pub/data/cmb/ersst/v5/netcdf/"
+muster = 'ersst\.v5\.(?P<jahr>\d{4})(?P<monat>\d{2})\.nc'
+standard = true
+
+# --- Vergleichsreihen ----------------------------------------------------------
+
+[gistemp]
+beschreibung = "NASA GISTEMP v4, globale und hemisphärische Mittel (Land+Ozean, nur Land)"
+typ = "datei"
+urls = [
+    "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv",
+    "https://data.giss.nasa.gov/gistemp/tabledata_v4/NH.Ts+dSST.csv",
+    "https://data.giss.nasa.gov/gistemp/tabledata_v4/SH.Ts+dSST.csv",
+    "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts.csv",
+]
+standard = true
+
+# --- Deutscher Wetterdienst ----------------------------------------------------
+
+[dwd_stationen]
+beschreibung = "DWD, Stationslisten für Tages- und Monatswerte (Klima-Kollektiv KL)"
+typ = "datei"
+urls = [
+    "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/daily/kl/historical/KL_Tageswerte_Beschreibung_Stationen.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/monthly/kl/historical/KL_Monatswerte_Beschreibung_Stationen.txt",
+]
+standard = true
+
+[dwd_gebietsmittel_temperatur]
+beschreibung = "DWD, Gebietsmittel Lufttemperatur (Deutschland + Bundesländer), monatlich"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/monthly/air_temperature_mean/"
+muster = 'regional_averages_tm_\d{2}\.txt'
+standard = true
+
+[dwd_gebietsmittel_niederschlag]
+beschreibung = "DWD, Gebietsmittel Niederschlag (Deutschland + Bundesländer), monatlich"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/monthly/precipitation/"
+muster = 'regional_averages_rr_\d{2}\.txt'
+standard = true
+
+# --- GHCN-Daily (Tageswerte) ---------------------------------------------------
+
+[ghcnd_stationen]
+beschreibung = "GHCN-Daily, Stationsliste und Inventar (Elemente und Zeiträume je Station)"
+typ = "datei"
+urls = [
+    "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt",
+    "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-inventory.txt",
+]
+standard = false
+
+[ghcnd_jahre]
+beschreibung = "GHCN-Daily, alle Stationen weltweit, eine Datei pro Jahr (20–170 MB je Jahr!)"
+typ = "verzeichnis"
+url = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/by_year/"
+muster = '(?P<jahr>\d{4})\.csv\.gz'
+standard = false

@@ -89,6 +89,9 @@ mit Messdaten-Assimilation – bewusst *nicht* Teil der Rohdatenauswertung, höc
 - Monats-, Tages-, Stunden- und 10-Minuten-Werte, jeweils als `historical` (geprüft) und `recent` (aktuell, vorläufig).
 - Stationslisten als Textdatei pro Produkt; Metadaten (Stationsumzüge, Gerätewechsel) separat verfügbar.
 - Zusätzlich offizielle Gebietsmittel für Deutschland und die Bundesländer (`regional_averages_DE`) – ideal als Vergleichsreihe.
+  Neben Temperatur und Niederschlag (monatlich, saisonal, jährlich) gibt es jährliche Gebietsmittel für
+  Kenntage: Sommertage, heiße Tage, Tropennächte, Frost- und Eistage sowie Tage mit ≥ 10 mm bzw. ≥ 20 mm
+  Niederschlag – ideal zur Prüfung unserer eigenen Kenntage-Auswertung (M6).
 
 ### 2.6 Vergleichsreihen (fertige Ergebnisse der Wissenschaft)
 
@@ -101,6 +104,37 @@ mit Messdaten-Assimilation – bewusst *nicht* Teil der Rohdatenauswertung, höc
 | DWD Gebietsmittel Deutschland | `https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/` |
 
 > Alle URLs werden bei der Implementierung nochmals geprüft und zentral in `konfiguration/quellen.toml` gepflegt.
+
+### 2.7 Zugriffswege und zeitliche Einschränkung (geprüft am 2026-10-07)
+
+| Quelle | Ablage auf dem Server | Zeitliche Einschränkung beim Download | Umfang |
+|---|---|---|---|
+| **GHCNm v4** | ein Archiv je Variante (`qcu`, `qcf`, zusätzlich `qfe`*) | **keine** – immer Gesamtbestand, Filterung erst beim Aufbereiten | je ~45 MB |
+| **ERSST v5** (NCEI) | eine NetCDF-Datei **pro Monat** (`ersst.v5.JJJJMM.nc`, 1854-01 bis aktuell) | **monatsgenau** über Dateiauswahl | ~0,2 MB/Monat, gesamt ~2.070 Dateien |
+| ERSST v5 (NOAA PSL) | eine Gesamtdatei `sst.mnmean.nc`, zusätzlich per **OPeNDAP** | OPeNDAP: Ausschnitt nach Zeit, Breite, Länge ohne Gesamtdownload | ~153 MB gesamt |
+| **GHCN-Daily** `by_station/` | eine CSV pro Station, komplette Historie | keine – aber pro Station klein | ~0,1–2 MB/Station |
+| **GHCN-Daily** `by_year/` | eine CSV pro **Jahr**, alle Stationen | **jahresgenau** über Dateiauswahl | 20 MB (1900) bis 170 MB (2024) pro Jahr |
+| GHCN-Daily `ghcnd_all.tar.gz` | Gesamtarchiv | keine | ~3,6 GB |
+| **NCEI Access Data Service** (`/access/services/data/v1`) | REST-Schnittstelle, u. a. `daily-summaries`, `global-summary-of-the-month` | **tagesgenau** (`startDate`, `endDate`), zusätzlich nach Stationen und Elementen (`TMAX,TMIN,PRCP`) | nur die angefragten Werte; Stations-IDs sind Pflicht |
+| **DWD CDC** täglich/monatlich | ZIP pro Station, getrennt in `historical` (geprüft, bis Ende Vorjahr) und `recent` (ca. letzte 500 Tage) | keine Abfrage – aber der **Zeitraum steht im Dateinamen** (`tageswerte_KL_00011_19800901_20251231_hist.zip`), so dass nur Stationen mit passendem Zeitraum geladen werden; `historical`/`recent` je nach Zeitraum | klein pro Station, ~1.280 Stationen täglich |
+| DWD Gebietsmittel | eine Textdatei pro Monat bzw. Saison/Jahr und Größe | keine (klein) | wenige KB |
+| GISTEMP | eine CSV pro Reihe | keine (klein) | ~13 KB |
+| GHCNh (stündlich) | Ablageort noch zu klären (alte Pfade liefern 404) | – | erst für M7 relevant |
+
+\* `qfe`: homogenisiert **und** Lücken aus Nachbarstationen geschätzt, nur 1961–2010 – gedacht für die Berechnung von Klimanormalwerten.
+Für uns nicht im Standardumfang, aber als optionaler Datensatz konfigurierbar.
+
+Weitere Befunde:
+- Alle geprüften Server liefern `ETag` und `Last-Modified` → **bedingte Downloads** (`If-None-Match` / `If-Modified-Since`),
+  d. h. unveränderte Dateien werden nicht erneut übertragen.
+- Alle unterstützen `Accept-Ranges: bytes` → abgebrochene große Downloads können **fortgesetzt** werden.
+- Die NCEI-Schnittstelle `global-summary-of-the-month` ist aus GHCN-Daily abgeleitet und **nicht identisch mit GHCNm v4**
+  (keine Homogenisierung) – für die globale Kurve nutzen wir daher die GHCNm-Archive.
+
+Daraus folgende Strategie für Tageswerte:
+- **Ausgewählte Stationen** (Normalfall, z. B. Deutschland, Europa): GHCN-Daily `by_station/` bzw. DWD-ZIPs – komplette Historie, Zeitfilter beim Aufbereiten.
+- **Kleine, gezielte Abfragen** (wenige Stationen, kurzer Zeitraum): NCEI Access Data Service.
+- **Alle Stationen weltweit für wenige Jahre**: GHCN-Daily `by_year/`.
 
 ## 3. Methodik
 
@@ -178,11 +212,15 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
   GHCNm v4 (QCU + QCF), ERSST v5, GHCN-Daily (Stationsliste + ausgewählte Stationen),
   DWD (Monats- und Tageswerte, Gebietsmittel für Temperatur und Niederschlag), Vergleichsreihen (GISTEMP, ggf. HadCRUT5, Berkeley Earth).
 - F-DL-2: Ablage unter `daten/roh/<datensatz>/`, Archive werden entpackt.
-- F-DL-3: Bereits vorhandene Dateien werden nicht erneut geladen (Prüfung über Größe/`Last-Modified`), `--force` erzwingt Neuladen.
+- F-DL-3: Bereits vorhandene, unveränderte Dateien werden nicht erneut übertragen (siehe F-DL-9), `--erzwingen` erzwingt Neuladen.
 - F-DL-4: Fortschrittsanzeige, Retry bei Netzwerkfehlern, parallele Downloads für viele kleine Dateien (ERSST, DWD).
 - F-DL-5: Ein Manifest (`daten/roh/manifest.json`) protokolliert Quelle, URL, Download-Zeitpunkt, SHA-256 – für Reproduzierbarkeit.
 - F-DL-6: Auswahl von Stationen für Tageswerte per Filter (Stations-IDs, Land, Bounding Box, Mindestlänge der Reihe).
 - F-DL-7: `klima laden --liste` zeigt verfügbare Datensätze und deren lokalen Status.
+- F-DL-8: Zeitliche Einschränkung mit `--von` / `--bis` (Jahr oder Jahr-Monat). Umsetzung je Quelle nach Abschnitt 2.7:
+  Dateiauswahl (ERSST, GHCN-Daily `by_year`, DWD), Abfrageparameter (NCEI Access Data Service) oder –
+  wo der Server nichts anbietet (GHCNm) – Gesamtdownload mit Hinweis, dass erst beim Aufbereiten gefiltert wird.
+- F-DL-9: Bedingte Downloads über `ETag`/`Last-Modified` und Fortsetzen abgebrochener Downloads über HTTP-Range.
 
 ### 4.2 Einlesen / Aufbereitung
 

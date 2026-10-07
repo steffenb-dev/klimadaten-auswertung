@@ -243,6 +243,9 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
   (Parquet-Filter, z. B. `filters=[("jahr", ">=", 1951), ("stations_id", "in", [...])]`; bei NetCDF `sel()`).
 - F-IO-6c: Jede aufbereitete Datei enthält in ihren Metadaten die SHA-256 der Quelldatei(en) aus dem Manifest.
   `klima.einlesen` erkennt veraltete Dateien und bereitet automatisch neu auf.
+- F-IO-8: Bestandsübersicht (`klima stationen`, `klima.bestand`): je Quelle, Station und zeitlicher
+  Auflösung Name, Land, Region, Koordinaten, Messgrößen, Zeitraum und Vollständigkeit – aus den
+  aufbereiteten Daten, filterbar nach Land, Quelle, Name und Auflösung, exportierbar als CSV/Parquet.
 - F-IO-7: Einheitliche Lade-API für Notebooks in `klima.einlesen`, z. B.
   `einlesen.ghcnm_monatswerte("qcf", stationen=..., von=1951, bis=1980)`, `einlesen.ersst(...)`,
   `einlesen.gistemp(...)`, `einlesen.dwd_gebietsmittel(...)`.

@@ -46,6 +46,17 @@ deutschland = einlesen.dwd_gebietsmittel("niederschlag")
 
 Fehlt die Aufbereitung oder haben sich die Rohdaten geändert, wird automatisch neu aufbereitet.
 
+## Bestand: welche Stationen liegen lokal vor?
+
+```bash
+uv run klima stationen --land GM                 # alle Stationen in Deutschland (FIPS-Code)
+uv run klima stationen --land germ --name hamburg  # Ländername und Stationsname als Teilstring
+uv run klima stationen --quelle dwd_monat --export stationen.csv   # Export (CSV für Excel oder .parquet)
+```
+
+Je Quelle, Station und zeitlicher Auflösung: Name, Land, Region, Koordinaten, Messgrößen,
+Zeitraum und Vollständigkeit. In Notebooks: `klima.bestand.stationsuebersicht(...)`.
+
 ## Auswertungen
 
 ```bash

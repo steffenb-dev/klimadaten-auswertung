@@ -230,3 +230,83 @@ def analysieren_station(
     ergebnis = auswertungen.station(stations_id, trend_von, _referenz(referenz_von, referenz_bis))
     typer.secho(f"Trends Station {stations_id}:", bold=True)
     _trends_ausgeben(ergebnis)
+
+
+# Kurzformen der Messgrößen für die Terminalausgabe
+_MESSGROESSEN_KURZ = {
+    "Temperatur-Maximum": "Tmax",
+    "Temperatur-Minimum": "Tmin",
+    "Temperatur": "T",
+    "Niederschlag": "N",
+    "Sonnenschein": "S",
+}
+
+
+@app.command()
+def stationen(
+    land: Annotated[
+        list[str] | None,
+        typer.Option(help="FIPS-Ländercode (GM) oder Teil des Ländernamens; mehrfach möglich."),
+    ] = None,
+    quelle: Annotated[
+        list[str] | None,
+        typer.Option(help="ghcnm_qcu, ghcnm_qcf, ghcnm_qfe, dwd_monat; mehrfach möglich."),
+    ] = None,
+    name: Annotated[str | None, typer.Option(help="Teil des Stationsnamens.")] = None,
+    aufloesung: Annotated[
+        str | None, typer.Option(help="Zeitliche Auflösung, z. B. monatlich.")
+    ] = None,
+    export: Annotated[
+        str | None, typer.Option(help="Ergebnis speichern als .csv (Excel-tauglich) oder .parquet.")
+    ] = None,
+    anzahl: Annotated[int, typer.Option(help="Maximal angezeigte Zeilen (0 = alle).")] = 50,
+) -> None:
+    """Übersicht der lokal vorhandenen Messstationen: Land, Name, Auflösung, Zeitraum."""
+    from pathlib import Path
+
+    from klima.bestand import stationsuebersicht, zusammenfassung
+
+    uebersicht = stationsuebersicht(quelle, land, name, aufloesung)
+    if uebersicht.empty:
+        typer.echo("Keine Stationen gefunden (Filter prüfen oder erst `klima laden`).")
+        raise typer.Exit(code=1)
+
+    typer.secho("Bestand je Quelle:", bold=True)
+    for zeile in zusammenfassung(uebersicht).itertuples():
+        typer.echo(
+            f"  {zeile.quelle:<10} {zeile.aufloesung:<10} {zeile.stationen:>6} Stationen in "
+            f"{zeile.laender:>3} Ländern, {zeile.von}–{zeile.bis}, "
+            f"{f'{zeile.werte:,}'.replace(',', '.')} Werte"
+        )
+
+    anzeige = uebersicht.assign(
+        land=uebersicht["land"].astype(str) + " " + uebersicht["land_name"].fillna(""),
+        region=uebersicht["region"].fillna(""),
+        vollst=uebersicht["vollstaendigkeit"].map(lambda v: f"{v:.0f} %"),
+        messgroessen=uebersicht["messgroessen"].replace(_MESSGROESSEN_KURZ, regex=True),
+        von=uebersicht["von"].astype(str),
+        bis=uebersicht["bis"].astype(str),
+    )[["quelle", "stations_id", "name", "land", "region", "aufloesung", "messgroessen",
+       "von", "bis", "vollst"]]  # fmt: skip
+    anzeige.columns = ["Quelle", "ID", "Name", "Land", "Region", "Auflösung", "Messgrößen",
+                       "von", "bis", "vollst."]  # fmt: skip
+    gekuerzt = anzahl and len(anzeige) > anzahl
+    typer.echo("")
+    typer.echo((anzeige.head(anzahl) if gekuerzt else anzeige).to_string(index=False))
+    if gekuerzt:
+        typer.echo(f"… {len(anzeige) - anzahl} weitere Zeilen (--anzahl 0 zeigt alle)")
+    typer.echo(
+        "Messgrößen: T Temperatur, Tmax/Tmin Maximum/Minimum, N Niederschlag, S Sonnenschein"
+    )
+
+    if export:
+        ziel = Path(export)
+        if ziel.suffix == ".parquet":
+            uebersicht.to_parquet(ziel, index=False)
+        elif ziel.suffix == ".csv":
+            uebersicht.assign(
+                von=uebersicht["von"].astype(str), bis=uebersicht["bis"].astype(str)
+            ).to_csv(ziel, sep=";", decimal=",", index=False, encoding="utf-8-sig")
+        else:
+            raise typer.BadParameter("Export nur als .csv oder .parquet.")
+        typer.echo(f"\n{len(uebersicht)} Zeilen gespeichert: {ziel}")

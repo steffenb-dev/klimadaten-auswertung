@@ -279,3 +279,187 @@ def jahresverlauf_deutschland(
         )
     )
     return ergebnis
+
+
+QUELLE_GHCNM = "Daten: NOAA NCEI GHCN-Monthly v4; Vergleich: NASA GISTEMP v4"
+EIGENE_QCF = "GHCNm homogenisiert (eigene Berechnung)"
+EIGENE_QCU = "GHCNm unbereinigt (eigene Berechnung)"
+EIGENE_HALBKUGEL = "GHCNm homogenisiert, Halbkugelmittel (eigene Berechnung)"
+GISTEMP_LAND = "NASA GISTEMP nur Land"
+FARBEN_GLOBAL = {
+    GISTEMP_LAND: "#2a78d6",
+    EIGENE_QCF: "#1baf7a",
+    EIGENE_QCU: "#eda100",
+    EIGENE_HALBKUGEL: "#e87ba4",
+}
+
+
+def _gistemp_jahre(gebiet: str, art: str) -> pd.Series:
+    monate = de.einlesen.gistemp(gebiet=gebiet, art=art)
+    vollstaendig = monate.groupby("jahr").filter(lambda g: len(g) == 12)
+    return vollstaendig.groupby("jahr")["anomalie"].mean().astype("float64")
+
+
+def weltweit_land(
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    ab_jahr: int = 1880,
+    unterordner: str = "global",
+) -> Ergebnis:
+    """Globale Landtemperatur aus GHCNm: QCU vs. QCF, Vergleich mit GISTEMP, Abdeckung, Karten."""
+    from klima import weltweit as ww
+
+    referenz = referenz or standard_referenzperiode()
+    ref_text = f"{referenz[0]}–{referenz[1]}"
+    groesse = ww.standard_zellgroesse()
+    ergebnis = Ergebnis()
+
+    gitter: dict[str, pd.DataFrame] = {}
+    jahre: dict[str, pd.DataFrame] = {}
+    for variante in ("qcf", "qcu"):
+        anomalien_ = ww.stationsanomalien(variante, referenz)
+        gitter[variante] = ww.gitter_mittel(anomalien_, groesse=groesse)
+        jahre[variante] = ww.jahresanomalien(gitter[variante]).loc[ab_jahr:]
+        if variante == "qcf":
+            abdeckung = ww.abdeckung(gitter["qcf"], anomalien_, groesse).loc[ab_jahr:]
+            ergebnis.tabellen["abdeckung"] = abdeckung
+            ergebnis.tabellen["stationen_mit_referenz"] = pd.DataFrame(
+                {"anzahl": [anomalien_["stations_id"].nunique()]}
+            )
+        del anomalien_
+    ergebnis.tabellen["jahresanomalien_qcf"] = jahre["qcf"]
+    ergebnis.tabellen["jahresanomalien_qcu"] = jahre["qcu"]
+
+    # 1) Globale Landkurve: eigene Berechnung (QCF, QCU) vs. GISTEMP Land
+    vergleich = pd.DataFrame(
+        {
+            GISTEMP_LAND: _gistemp_jahre("global", "land").loc[ab_jahr:],
+            EIGENE_QCF: jahre["qcf"]["global"],
+            EIGENE_QCU: jahre["qcu"]["global"],
+            EIGENE_HALBKUGEL: jahre["qcf"]["halbkugelmittel"],
+        }
+    )
+    ergebnis.tabellen["global_land"] = vergleich
+    for name in vergleich.columns:
+        ergebnis.trends[f"Global Land: {name}"] = linearer_trend(vergleich[name], von=trend_von)
+        ergebnis.trends[f"Global Land seit {ab_jahr}: {name}"] = linearer_trend(vergleich[name])
+    trend = ergebnis.trends[f"Global Land: {EIGENE_QCF}"]
+    titel = "Globale Landtemperatur – eigene Berechnung aus Stationsdaten"
+    untertitel = (
+        f"Jahresmittel, Abweichung von {ref_text}; {groesse:g}°-Gitter, flächengewichtet. "
+        f"Trend homogenisiert: {trend.text()}"
+    )
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(vergleich, titel, untertitel=untertitel, referenz=referenz,
+                            farben=FARBEN_GLOBAL, quelle=QUELLE_GHCNM),
+        "global_land", unterordner,
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.zeitreihen(vergleich, titel, untertitel=f"Jahresmittel, Abweichung von "
+                                  f"{ref_text}", referenz=referenz, farben=FARBEN_GLOBAL),
+            "global_land", unterordner,
+        )
+    )  # fmt: skip
+
+    # 2) Halbkugeln (homogenisiert) vs. GISTEMP-Halbkugeln existieren nur als Land+Ozean,
+    #    daher hier ohne Vergleichsreihe
+    halbkugeln = jahre["qcf"][["nordhalbkugel", "suedhalbkugel"]].rename(
+        columns={"nordhalbkugel": "Nordhalbkugel", "suedhalbkugel": "Südhalbkugel"}
+    )
+    for name in halbkugeln.columns:
+        ergebnis.trends[f"Land {name}"] = linearer_trend(halbkugeln[name], von=trend_von)
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(halbkugeln, "Landtemperatur nach Halbkugel",
+                            untertitel=f"GHCNm homogenisiert, Abweichung von {ref_text}",
+                            referenz=referenz, quelle=QUELLE_GHCNM),
+        "halbkugeln_land", unterordner,
+    )  # fmt: skip
+
+    # 3) Effekt der Homogenisierung
+    differenz = pd.DataFrame(
+        {
+            "homogenisiert minus unbereinigt": vergleich[EIGENE_QCF] - vergleich[EIGENE_QCU],
+            "GISTEMP minus eigene (global)": vergleich[GISTEMP_LAND] - vergleich[EIGENE_QCF],
+            "GISTEMP minus eigene (Halbkugelmittel)": vergleich[GISTEMP_LAND]
+            - vergleich[EIGENE_HALBKUGEL],
+        }
+    )
+    ergebnis.tabellen["differenzen"] = differenz
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(differenz, "Differenzen der globalen Landkurven",
+                            untertitel="Jahresmittel in °C; 0 = gleiche Anomalie",
+                            glaettung=11, quelle=QUELLE_GHCNM),
+        "global_land_differenzen", unterordner,
+    )  # fmt: skip
+
+    effekt = ww.homogenisierungseffekt(von=trend_von)
+    ergebnis.tabellen["homogenisierung_stationen"] = effekt
+    untertitel = (
+        f"Trend {trend_von}–heute je Station: homogenisiert minus unbereinigt; "
+        f"{len(effekt):,} Stationen".replace(",", ".")
+    )
+    ergebnis.dateien += statisch.speichern(
+        statisch.histogramm(effekt["differenz"], "Wie stark verändert die Homogenisierung den "
+                            "Trend einzelner Stationen?", "°C/Dekade", untertitel,
+                            quelle=QUELLE_GHCNM),
+        "homogenisierung_histogramm", unterordner,
+    )  # fmt: skip
+    ergebnis.dateien += statisch.speichern(
+        statisch.stationskarte(effekt, "differenz", "Trendänderung durch Homogenisierung",
+                               "°C/Dekade (homogenisiert minus unbereinigt)", untertitel,
+                               ausdehnung=None, quelle=QUELLE_GHCNM),
+        "homogenisierung_karte", unterordner, formate=("png",),
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.weltkarte_stationen(effekt, "differenz", "Trendänderung durch "
+                                           "Homogenisierung", "°C/Dekade", untertitel),
+            "homogenisierung_karte", unterordner,
+        )
+    )  # fmt: skip
+
+    # 4) Stationstrends weltweit (homogenisiert)
+    trends_qcf = effekt.rename(columns={"trend_qcf": "trend"})
+    ergebnis.dateien += statisch.speichern(
+        statisch.stationskarte(trends_qcf, "trend", f"Temperaturtrend je Station seit {trend_von}",
+                               "°C/Dekade", f"GHCNm homogenisiert, {len(trends_qcf):,} Stationen "
+                               "mit mind. 80 % vollständigen Jahren".replace(",", "."),
+                               ausdehnung=None, quelle=QUELLE_GHCNM),
+        "stationstrends_karte", unterordner, formate=("png",),
+    )  # fmt: skip
+
+    # 5) Abdeckung
+    ergebnis.dateien += statisch.speichern(
+        statisch.abdeckung(abdeckung, "Wie gut ist die Erde mit Stationen abgedeckt?",
+                           f"GHCNm homogenisiert, Stationen mit Referenzwerten {ref_text}; "
+                           f"{groesse:g}°-Gitterzellen", quelle=QUELLE_GHCNM),
+        "abdeckung", unterordner,
+    )  # fmt: skip
+
+    # 6) Gitterkarten: letztes Jahrzehnt statisch, alle Jahrzehnte interaktiv
+    jahrzehnte = ww.jahrzehntmittel(gitter["qcf"])
+    jahrzehnte = jahrzehnte[jahrzehnte["jahrzehnt"] >= (ab_jahr // 10) * 10]
+    ergebnis.tabellen["jahrzehnte"] = jahrzehnte
+    letztes = int(jahrzehnte["jahrzehnt"].max())
+    letztes_jahr = int(gitter["qcf"]["jahr"].max())
+    ergebnis.dateien += statisch.speichern(
+        statisch.gitterkarte(jahrzehnte[jahrzehnte["jahrzehnt"] == letztes],
+                             f"Temperaturanomalie {letztes}–{letztes_jahr}",
+                             untertitel=f"Mittel je {groesse:g}°-Zelle, Abweichung von {ref_text}; "
+                             "nur Zellen mit mind. 5 Jahren Daten", zellgroesse=groesse,
+                             quelle=QUELLE_GHCNM),
+        "gitterkarte_letztes_jahrzehnt", unterordner, formate=("png",),
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.gitterkarte_zeitregler(
+                jahrzehnte, "jahrzehnt", "Temperaturanomalie je Jahrzehnt",
+                untertitel=f"GHCNm homogenisiert, {groesse:g}°-Zellen, Abweichung von {ref_text}",
+                zellgroesse=groesse,
+                beschriftung=lambda z: f"{z}–{min(z + 9, letztes_jahr)}",
+            ),
+            "gitterkarte_jahrzehnte", unterordner,
+        )
+    )  # fmt: skip
+    return ergebnis

@@ -10,6 +10,7 @@ import pandas as pd
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
 
 from klima.grafik import stil
 from klima.trend import gleitendes_mittel
@@ -161,11 +162,13 @@ def stationskarte(
     titel: str,
     einheit: str,
     untertitel: str | None = None,
-    ausdehnung: tuple[float, float, float, float] = (5.5, 15.5, 47.0, 55.2),
+    ausdehnung: tuple[float, float, float, float] | None = (5.5, 15.5, 47.0, 55.2),
     quelle: str | None = None,
     groesse: str = "temperatur",
 ) -> Figure:
     """Karte der Stationen, eingefärbt nach `wert` (divergierend um 0).
+
+    `ausdehnung` (Länge min/max, Breite min/max) – Standard Deutschland; `None` = Weltkarte.
 
     `groesse` wählt die Farbskala: `temperatur` (blau kalt – rot warm) oder
     `niederschlag` (orange trocken – blau nass). Die Skala endet beim 98. Perzentil;
@@ -175,21 +178,26 @@ def stationskarte(
     import cartopy.feature as cfeature
 
     stil.anwenden()
-    projektion = ccrs.LambertConformal(central_longitude=10.5, central_latitude=51)
-    fig = plt.figure(figsize=(7.2, 8.4), layout="constrained")
-    ax = fig.add_subplot(1, 1, 1, projection=projektion)
-    ax.set_extent(ausdehnung, crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor="#f6f5f2", edgecolor="none")
-    ax.add_feature(cfeature.OCEAN.with_scale("10m"), facecolor="#e9eef3", edgecolor="none")
-    ax.add_feature(cfeature.BORDERS.with_scale("10m"), edgecolor=stil.TINTE_GEDAEMPFT, lw=0.7)
-    ax.add_feature(cfeature.COASTLINE.with_scale("10m"), edgecolor=stil.TINTE_GEDAEMPFT, lw=0.5)
+    welt = ausdehnung is None
+    if welt:
+        fig, ax = _weltkarte()
+    else:
+        projektion = ccrs.LambertConformal(central_longitude=10.5, central_latitude=51)
+        fig = plt.figure(figsize=(7.2, 8.4), layout="constrained")
+        ax = fig.add_subplot(1, 1, 1, projection=projektion)
+        ax.set_extent(ausdehnung, crs=ccrs.PlateCarree())
+        ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor="#f6f5f2", edgecolor="none")
+        ax.add_feature(cfeature.OCEAN.with_scale("10m"), facecolor="#e9eef3", edgecolor="none")
+        ax.add_feature(cfeature.BORDERS.with_scale("10m"), edgecolor=stil.TINTE_GEDAEMPFT, lw=0.7)
+        ax.add_feature(cfeature.COASTLINE.with_scale("10m"), edgecolor=stil.TINTE_GEDAEMPFT, lw=0.5)
 
     werte = stationen[wert].to_numpy()
     grenze = stil.robuste_grenze(werte)
     punkte = ax.scatter(
-        stationen["laenge"], stationen["breite"], c=werte, s=34,
+        stationen["laenge"], stationen["breite"], c=werte, s=3 if welt else 34,
         cmap=stil.FARBSKALEN[groesse], norm=TwoSlopeNorm(vcenter=0, vmin=-grenze, vmax=grenze),
-        edgecolors=stil.FLAECHE, linewidths=0.8, transform=ccrs.PlateCarree(), zorder=3,
+        edgecolors=stil.FLAECHE if not welt else "none", linewidths=0 if welt else 0.8,
+        transform=ccrs.PlateCarree(), zorder=3,
     )  # fmt: skip
     ueberschritten = bool(np.nanmax(np.abs(werte)) > grenze)
     leiste = fig.colorbar(
@@ -266,6 +274,118 @@ def jahresverlauf(
     ax.yaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
     ax.set_ylabel(f"{y_beschriftung} ({einheit})")
     ax.legend(loc="upper left", fontsize=9, ncols=2)
+    _titel(ax, titel, untertitel)
+    _quelle(fig, quelle)
+    return fig
+
+
+def _weltkarte():
+    """Leere Weltkarte (Robinson-Projektion) mit Land, Meer und Küsten."""
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+
+    fig = plt.figure(figsize=(11, 6.6), layout="constrained")
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson())
+    ax.set_global()
+    ax.add_feature(cfeature.LAND.with_scale("110m"), facecolor="#f6f5f2", edgecolor="none")
+    ax.add_feature(cfeature.OCEAN.with_scale("110m"), facecolor="#e9eef3", edgecolor="none")
+    ax.add_feature(cfeature.COASTLINE.with_scale("110m"), edgecolor=stil.TINTE_GEDAEMPFT, lw=0.4)
+    ax.spines["geo"].set_edgecolor(stil.GRUNDLINIE)
+    return fig, ax
+
+
+def gitterkarte(
+    gitter: pd.DataFrame,
+    titel: str,
+    einheit: str = "°C",
+    wert: str = "anomalie",
+    zellgroesse: float = 5.0,
+    untertitel: str | None = None,
+    grenze: float | None = None,
+    quelle: str | None = None,
+) -> Figure:
+    """Weltkarte der Gitterzellen (`zelle_breite`, `zelle_laenge`, `wert`).
+
+    Zellen ohne Daten bleiben frei.
+    """
+    import cartopy.crs as ccrs
+
+    stil.anwenden()
+    breiten = np.arange(-90, 90 + zellgroesse, zellgroesse)
+    laengen = np.arange(-180, 180 + zellgroesse, zellgroesse)
+    raster = np.full((len(breiten) - 1, len(laengen) - 1), np.nan)
+    zeile = ((gitter["zelle_breite"].to_numpy() + 90) // zellgroesse).astype(int)
+    spalte = ((gitter["zelle_laenge"].to_numpy() + 180) // zellgroesse).astype(int)
+    raster[zeile, spalte] = gitter[wert].to_numpy()
+
+    grenze = grenze or stil.robuste_grenze(gitter[wert])
+    fig, ax = _weltkarte()
+    flaeche = ax.pcolormesh(
+        laengen, breiten, np.ma.masked_invalid(raster), cmap=stil.DIVERGIEREND,
+        norm=TwoSlopeNorm(vcenter=0, vmin=-grenze, vmax=grenze), transform=ccrs.PlateCarree(),
+        zorder=2,
+    )  # fmt: skip
+    ax.coastlines(resolution="110m", color=stil.TINTE_GEDAEMPFT, lw=0.4, zorder=3)
+    ueberschritten = bool(np.nanmax(np.abs(raster)) > grenze)
+    leiste = fig.colorbar(
+        flaeche, ax=ax, orientation="horizontal", shrink=0.55, pad=0.03,
+        extend="both" if ueberschritten else "neither",
+    )  # fmt: skip
+    leiste.set_label(einheit, color=stil.TINTE_2)
+    leiste.ax.xaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
+    leiste.outline.set_visible(False)
+    _titel(ax, titel, untertitel)
+    _quelle(fig, quelle)
+    return fig
+
+
+def abdeckung(
+    tabelle: pd.DataFrame, titel: str, untertitel: str | None = None, quelle: str | None = None
+) -> Figure:
+    """Stationsabdeckung je Jahr als zwei übereinanderliegende Diagramme (keine zweite y-Achse):
+    oben aktive Stationen, unten Anteil der Erdoberfläche in besetzten Gitterzellen."""
+    stil.anwenden()
+    fig, (oben, unten) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, layout="constrained")
+    for ax, spalte, beschriftung, farbe in (
+        (oben, "stationen", "Aktive Stationen", stil.KATEGORIEN[0]),
+        (unten, "flaechenanteil", "Erdoberfläche in besetzten Zellen (%)", stil.KATEGORIEN[1]),
+    ):
+        ax.fill_between(tabelle.index, tabelle[spalte], color=farbe, alpha=0.18, lw=0)
+        ax.plot(tabelle.index, tabelle[spalte], color=farbe, lw=1.8)
+        ax.set_ylabel(beschriftung)
+        ax.set_ylim(bottom=0)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:,.0f}".replace(",", ".")))
+    oben.margins(x=0.01)
+    _titel(oben, titel, untertitel)
+    _quelle(fig, quelle)
+    return fig
+
+
+def histogramm(
+    werte: pd.Series,
+    titel: str,
+    einheit: str,
+    untertitel: str | None = None,
+    quelle: str | None = None,
+    klassen: int = 80,
+) -> Figure:
+    """Verteilung eines Werts (z. B. Trendänderung je Station) mit Markierung von 0 und Median."""
+    stil.anwenden()
+    werte = werte.dropna()
+    grenze = stil.robuste_grenze(werte, 99)
+    fig, ax = plt.subplots(figsize=(10, 4.8), layout="constrained")
+    ax.hist(werte.clip(-grenze, grenze), bins=klassen, color=stil.KATEGORIEN[0], rwidth=0.85)
+    ax.axvline(0, color=stil.GRUNDLINIE, lw=1)
+    median = float(werte.median())
+    ax.axvline(median, color=stil.TINTE, lw=1.4)
+    ax.annotate(
+        f"Median {stil.zahl(median, 3)} {einheit}", xy=(median, 1),
+        xycoords=("data", "axes fraction"),
+        xytext=(6, -12), textcoords="offset points", fontsize=9, color=stil.TINTE,
+    )  # fmt: skip
+    ax.xaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
+    ax.set_xlabel(einheit)
+    ax.set_ylabel("Anzahl Stationen")
     _titel(ax, titel, untertitel)
     _quelle(fig, quelle)
     return fig

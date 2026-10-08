@@ -343,3 +343,17 @@ def analysieren_jahresverlauf(
     typer.echo(f"{len(matrix)} Jahre ({matrix.index.min()}–{matrix.index.max()}) dargestellt")
     for pfad in ergebnis.dateien:
         typer.echo(f"  {pfad}")
+
+
+@analysieren_app.command("global")
+def analysieren_global(
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Globale Landtemperatur aus GHCNm: unbereinigt vs. homogenisiert, Vergleich mit GISTEMP."""
+    from klima import auswertungen
+
+    ergebnis = auswertungen.weltweit_land(trend_von, _referenz(referenz_von, referenz_bis))
+    typer.secho("Trends globale Landtemperatur:", bold=True)
+    _trends_ausgeben(ergebnis)

@@ -70,3 +70,17 @@ def gleitendes_mittel(reihe: pd.Series, fenster: int = 11, mindestanteil: float 
     return reihe.rolling(
         fenster, center=True, min_periods=max(1, int(np.ceil(fenster * mindestanteil)))
     ).mean()
+
+
+def steigung_je_gruppe(tabelle: pd.DataFrame, gruppe: str, x: str, y: str) -> pd.Series:
+    """Kleinste-Quadrate-Steigung von `y` über `x` je Gruppe, vektorisiert.
+
+    Steigung = Σ(x − x̄)(y − ȳ) / Σ(x − x̄)² – ohne Schleife über Tausende Gruppen.
+    Gruppen mit nur einem x-Wert ergeben NaN.
+    """
+    gruppiert = tabelle.groupby(gruppe, observed=True)
+    dx = tabelle[x] - gruppiert[x].transform("mean")
+    dy = tabelle[y] - gruppiert[y].transform("mean")
+    zaehler = (dx * dy).groupby(tabelle[gruppe], observed=True).sum()
+    nenner = (dx * dx).groupby(tabelle[gruppe], observed=True).sum()
+    return zaehler / nenner.where(nenner > 0)

@@ -300,7 +300,8 @@ Hovern oder Auswählen echten Mehrwert bringt.
 ### 4.5 Nutzung: CLI und Notebooks
 
 - F-UI-1: CLI `klima` mit deutschen Unterbefehlen: `laden`, `aufbereiten`,
-  `analysieren deutschland`, `analysieren station <ID|Name>` (später `analysieren global`).
+  `analysieren deutschland`, `analysieren station <ID|Name>`, `analysieren jahresverlauf`,
+  `analysieren global`, `stationen`.
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -357,6 +358,9 @@ klimadaten-auswertung/
 │   ├── gitter.py             # Gitterung, Flächengewichtung (später Land-See-Maske)
 │   ├── trend.py              # lineare Trends, gleitende Mittel
 │   ├── deutschland.py        # Gebietsmittel und Stationstrends für Deutschland
+│   ├── jahresverlauf.py      # tägliches Gebietsmittel, 365-Tage-Kalender
+│   ├── weltweit.py           # globale/hemisphärische Landtemperatur, Homogenisierung, Abdeckung
+│   ├── bestand.py            # Übersicht der lokal vorhandenen Stationen
 │   ├── auswertungen.py       # fertige Auswertungen inkl. Grafiken (für CLI und Notebooks)
 │   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes (M6)
 │   ├── niederschlag.py       # Niederschlagsindizes (M6)

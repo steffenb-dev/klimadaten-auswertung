@@ -177,3 +177,22 @@ def test_dateiname_sicher():
     assert dateiname_sicher("Hohenpeißenberg") == "hohenpeissenberg"
     assert dateiname_sicher("Liebenzell, Bad/ Nagold") == "liebenzell_bad_nagold"
     assert dateiname_sicher("Potsdam (Säkularstation)") == "potsdam_saekularstation"
+
+
+def test_steigung_je_gruppe_wie_scipy():
+    from scipy import stats
+
+    from klima.trend import steigung_je_gruppe
+
+    rng = np.random.default_rng(3)
+    teile = []
+    for name, steigung in (("a", 0.02), ("b", -0.01)):
+        jahre = np.arange(1951, 2021)
+        werte = steigung * jahre + rng.normal(0, 0.3, len(jahre))
+        teile.append(pd.DataFrame({"station": name, "jahr": jahre, "t": werte}))
+    tabelle = pd.concat(teile + [pd.DataFrame({"station": ["c"], "jahr": [2000], "t": [1.0]})])
+    ergebnis = steigung_je_gruppe(tabelle, "station", "jahr", "t")
+    for name in ("a", "b"):
+        teil = tabelle[tabelle.station == name]
+        assert ergebnis[name] == pytest.approx(stats.linregress(teil.jahr, teil.t).slope)
+    assert np.isnan(ergebnis["c"])

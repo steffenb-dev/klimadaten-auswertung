@@ -221,3 +221,94 @@ def jahresverlauf(
     for anfang in MONATSANFAENGE[1:]:
         fig.add_vline(x=anfang, line={"color": stil.GITTERLINIE, "width": 1}, layer="below")
     return _grundlayout(fig, titel, untertitel)
+
+
+def _zellen_geojson(zellen: pd.DataFrame, groesse: float) -> dict:
+    """GeoJSON mit einem Rechteck je Gitterzelle; `id` = "breite_laenge" der Zellmitte."""
+    h = groesse / 2
+    merkmale = []
+    eindeutig = zellen[["zelle_breite", "zelle_laenge"]].drop_duplicates()
+    for b, lg in eindeutig.itertuples(index=False):
+        ring = [[lg - h, b - h], [lg + h, b - h], [lg + h, b + h], [lg - h, b + h], [lg - h, b - h]]
+        merkmale.append(
+            {"type": "Feature", "id": f"{b}_{lg}",
+             "geometry": {"type": "Polygon", "coordinates": [ring]}}
+        )  # fmt: skip
+    return {"type": "FeatureCollection", "features": merkmale}
+
+
+def gitterkarte_zeitregler(
+    gitter: pd.DataFrame,
+    zeitspalte: str,
+    titel: str,
+    einheit: str = "°C",
+    wert: str = "anomalie",
+    zellgroesse: float = 5.0,
+    untertitel: str | None = None,
+    beschriftung=lambda z: str(z),
+) -> go.Figure:
+    """Weltkarte der Gitterzellen mit Zeitschieberegler (ein Bild je Wert von `zeitspalte`)."""
+    gitter = gitter.assign(
+        zelle=gitter["zelle_breite"].astype(str) + "_" + gitter["zelle_laenge"].astype(str)
+    )
+    geojson = _zellen_geojson(gitter, zellgroesse)
+    grenze = stil.robuste_grenze(gitter[wert])
+    zeiten = sorted(gitter[zeitspalte].unique())
+
+    def spur(teil: pd.DataFrame) -> go.Choropleth:
+        return go.Choropleth(
+            geojson=geojson, locations=teil["zelle"], z=teil[wert], zmin=-grenze, zmax=grenze,
+            colorscale=_plotly_skala(), marker_line_width=0,
+            colorbar={"title": {"text": einheit}, "thickness": 12, "len": 0.6},
+            customdata=teil[["zelle_breite", "zelle_laenge"]].to_numpy(),
+            hovertemplate=(
+                "Zelle %{customdata[0]}° / %{customdata[1]}°<br>"
+                f"%{{z:+.2f}} {einheit}<extra></extra>"
+            ),
+        )  # fmt: skip
+
+    bilder = [go.Frame(data=[spur(gitter[gitter[zeitspalte] == z])], name=str(z)) for z in zeiten]
+    fig = go.Figure(data=bilder[-1].data, frames=bilder)
+    schritte = [
+        {"args": [[str(z)], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate"}],
+         "label": beschriftung(z), "method": "animate"}
+        for z in zeiten
+    ]  # fmt: skip
+    fig.update_layout(
+        height=640,
+        sliders=[{"active": len(zeiten) - 1, "steps": schritte, "x": 0.05, "len": 0.9,
+                  "currentvalue": {"prefix": "Zeitraum: "}}],
+    )  # fmt: skip
+    fig.update_geos(
+        projection_type="robinson", showland=True, landcolor="#f6f5f2", showocean=True,
+        oceancolor="#e9eef3", showcoastlines=True, coastlinecolor=stil.TINTE_GEDAEMPFT,
+        bgcolor=stil.FLAECHE, showframe=False,
+    )  # fmt: skip
+    return _grundlayout(fig, titel, untertitel)
+
+
+def weltkarte_stationen(
+    stationen: pd.DataFrame, wert: str, titel: str, einheit: str, untertitel: str | None = None
+) -> go.Figure:
+    """Weltweite Stationskarte mit Hover (Name, ID, Wert); Farbskala robust um 0."""
+    werte = stationen[wert].to_numpy(dtype=float)
+    grenze = stil.robuste_grenze(werte)
+    fig = go.Figure(
+        go.Scattergeo(
+            lon=stationen["laenge"], lat=stationen["breite"], mode="markers",
+            customdata=stationen[["name", "stations_id"]].to_numpy(),
+            hovertemplate=(
+                "<b>%{customdata[0]}</b> (%{customdata[1]})<br>"
+                f"%{{marker.color:+.3f}} {einheit}<extra></extra>"
+            ),
+            marker={"size": 4, "color": werte, "colorscale": _plotly_skala(), "cmin": -grenze,
+                    "cmax": grenze, "colorbar": {"title": {"text": einheit}, "thickness": 12}},
+        )
+    )  # fmt: skip
+    fig.update_geos(
+        projection_type="robinson", showland=True, landcolor="#f6f5f2", showocean=True,
+        oceancolor="#e9eef3", showcoastlines=True, coastlinecolor=stil.TINTE_GEDAEMPFT,
+        bgcolor=stil.FLAECHE, showframe=False,
+    )  # fmt: skip
+    fig.update_layout(height=620)
+    return _grundlayout(fig, titel, untertitel)

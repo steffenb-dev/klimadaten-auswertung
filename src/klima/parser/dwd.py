@@ -100,6 +100,42 @@ MONATSWERTE_SPALTEN = {
 }
 
 
+# Kürzel im Dateinamen der jährlichen Gebietsmittel -> Kenngröße
+KENNTAGE_KUERZEL = {
+    "txas": "sommertage",
+    "txbs": "heisse_tage",
+    "tnes": "tropennaechte",
+    "tnas": "frosttage",
+    "txcs": "eistage",
+    "rrsfs": "starkniederschlag_10mm",
+    "rrsgs": "starkniederschlag_20mm",
+}
+
+
+def lies_jahresgebietsmittel_kenntage(pfad: Path) -> pd.DataFrame:
+    """Jährliche Gebietsmittel einer Kenngröße (`regional_averages_<kürzel>_year.txt`).
+
+    Spalten: `kenngroesse`, `gebiet`, `jahr`, `wert` (Anzahl Tage).
+    """
+    treffer = re.fullmatch(r"regional_averages_(\w+?)_year\.txt", pfad.name)
+    if not treffer or treffer[1] not in KENNTAGE_KUERZEL:
+        raise ValueError(f"Unbekannte Kenntage-Datei: {pfad.name}")
+    with oeffne_text(pfad, encoding=KODIERUNG) as datei:
+        tabelle = pd.read_csv(datei, sep=";", skiprows=1, na_values=[FEHLWERT, str(FEHLWERT)])
+    tabelle = tabelle.loc[:, ~tabelle.columns.str.startswith("Unnamed")]
+    tabelle = tabelle.drop(columns=[s for s in tabelle.columns if s.startswith("Jahr.")])
+    lang = tabelle.melt(id_vars="Jahr", var_name="gebiet", value_name="wert").dropna()
+    lang = lang.rename(columns={"Jahr": "jahr"})
+    lang.insert(0, "kenngroesse", KENNTAGE_KUERZEL[treffer[1]])
+    return lang.astype({"jahr": "int16", "wert": "float32"})
+
+
+def lies_jahresgebietsmittel_kenntage_alle(dateien: list[Path]) -> pd.DataFrame:
+    alle = pd.concat([lies_jahresgebietsmittel_kenntage(p) for p in dateien], ignore_index=True)
+    alle = alle.sort_values(["kenngroesse", "gebiet", "jahr"], ignore_index=True)
+    return alle.astype({"kenngroesse": "category", "gebiet": "category"})
+
+
 # DWD-Kennung -> eigene Spalte (Tageswerte, Klima-Kollektiv KL)
 TAGESWERTE_SPALTEN = {
     "TMK": "tmittel",  # Tagesmittel der Lufttemperatur, °C

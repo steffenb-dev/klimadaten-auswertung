@@ -145,6 +145,22 @@ def _dwd_tag(laendernamen: dict[str, str]) -> pd.DataFrame:
     )
 
 
+def _ghcnd_tag(laendernamen: dict[str, str]) -> pd.DataFrame:
+    werte = einlesen.ghcnd_tageswerte(
+        spalten=["stations_id", "datum", "tmax", "tmin", "niederschlag", "schneehoehe"]
+    )
+    messgroessen = {k: v for k, v in DWD_TAG_MESSGROESSEN.items() if k in werte}
+    zeitraeume = _taegliche_zeitraeume(werte, messgroessen)
+    stationen = einlesen.ghcnd_stationen().astype({"stations_id": str})
+    tabelle = stationen.merge(zeitraeume, on="stations_id")
+    return tabelle.assign(
+        quelle="GHCN-Daily",
+        land_name=tabelle["land"].map(laendernamen),
+        region=pd.NA,
+        aufloesung="täglich",
+    )
+
+
 # Quelle -> Funktion, die die Übersicht für diese Quelle liefert
 QUELLEN: dict[str, Callable[[dict[str, str]], pd.DataFrame]] = {
     "ghcnm_qcu": _ghcnm("qcu"),
@@ -152,6 +168,7 @@ QUELLEN: dict[str, Callable[[dict[str, str]], pd.DataFrame]] = {
     "ghcnm_qfe": _ghcnm("qfe"),
     "dwd_monat": _dwd_monat,
     "dwd_tag": _dwd_tag,
+    "ghcnd": _ghcnd_tag,
 }
 
 

@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-GUELTIGE_TYPEN = ("datei", "verzeichnis")
+GUELTIGE_TYPEN = ("datei", "verzeichnis", "stationsauswahl")
 
 # Benannte Gruppen im Dateimuster, über die `--von`/`--bis` wirken können
 ZEITGRUPPEN = ("jahr", "beginn")
@@ -62,6 +62,13 @@ def _datensatz_aus_eintrag(name: str, eintrag: dict) -> Datensatz:
         urls = tuple(eintrag.get("urls", ()))
         if not urls:
             raise ValueError(f"Datensatz {name!r}: Typ 'datei' benötigt 'urls'.")
+    elif typ == "stationsauswahl":
+        if "{station}" not in eintrag.get("url", ""):
+            raise ValueError(
+                f"Datensatz {name!r}: Typ 'stationsauswahl' benötigt 'url' mit Platzhalter "
+                "'{station}'."
+            )
+        urls = ()
     else:
         if not eintrag.get("url") or not eintrag.get("muster"):
             raise ValueError(f"Datensatz {name!r}: Typ 'verzeichnis' benötigt 'url' und 'muster'.")

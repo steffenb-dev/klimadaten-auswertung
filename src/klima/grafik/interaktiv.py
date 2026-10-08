@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.colors import to_hex
@@ -311,4 +312,56 @@ def weltkarte_stationen(
         bgcolor=stil.FLAECHE, showframe=False,
     )  # fmt: skip
     fig.update_layout(height=620)
+    return _grundlayout(fig, titel, untertitel)
+
+
+def kleine_vielfache(
+    felder: dict[str, pd.DataFrame],
+    titel: str,
+    einheiten: dict[str, str] | None = None,
+    untertitel: str | None = None,
+    farben: dict[str, str] | None = None,
+    glaettung: int | None = 11,
+    spalten: int = 3,
+) -> go.Figure:
+    """Interaktive kleine Vielfache: je Feld ein Diagramm mit eigener y-Achse."""
+    from plotly.subplots import make_subplots
+
+    einheiten = einheiten or {}
+    namen = list(dict.fromkeys(n for tabelle in felder.values() for n in tabelle.columns))
+    farben = stil.farben_fuer(namen, farben)
+    zeilen = int(np.ceil(len(felder) / spalten))
+    fig = make_subplots(
+        rows=zeilen, cols=spalten, subplot_titles=list(felder), shared_xaxes=True,
+        vertical_spacing=0.09, horizontal_spacing=0.07,
+    )  # fmt: skip
+    gezeigt: set[str] = set()
+    for i, (feldtitel, tabelle) in enumerate(felder.items()):
+        zeile, spalte = divmod(i, spalten)
+        einheit = einheiten.get(feldtitel, "")
+        for name in tabelle.columns:
+            reihe = tabelle[name].dropna()
+            if reihe.empty:
+                continue
+            y = gleitendes_mittel(reihe, glaettung) if glaettung else reihe
+            fig.add_trace(
+                go.Scatter(
+                    x=reihe.index, y=reihe.values, mode="lines", name=name, legendgroup=name,
+                    showlegend=False, opacity=0.4, line={"color": farben[name], "width": 1},
+                    hovertemplate=f"{name}<br>%{{x}}: %{{y:.1f}} {einheit}<extra></extra>",
+                ),
+                row=zeile + 1, col=spalte + 1,
+            )  # fmt: skip
+            fig.add_trace(
+                go.Scatter(
+                    x=y.index, y=y.values, mode="lines", name=name, legendgroup=name,
+                    showlegend=name not in gezeigt, line={"color": farben[name], "width": 2.2},
+                    hovertemplate=f"{name} ({glaettung}-j. Mittel)<br>%{{x}}: %{{y:.1f}} "
+                    f"{einheit}<extra></extra>",
+                ),
+                row=zeile + 1, col=spalte + 1,
+            )  # fmt: skip
+            gezeigt.add(name)
+    fig.update_layout(height=320 * zeilen + 120, legend={"orientation": "h", "y": -0.06, "x": 0})
+    fig.update_yaxes(gridcolor=stil.GITTERLINIE, showgrid=True, zeroline=False)
     return _grundlayout(fig, titel, untertitel)

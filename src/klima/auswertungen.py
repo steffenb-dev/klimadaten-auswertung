@@ -41,6 +41,8 @@ class Ergebnis:
     """Ergebnis einer Auswertung: Kennzahlen und erzeugte Dateien."""
 
     trends: dict[str, Trend] = field(default_factory=dict)
+    # Einheit je Trend für die Ausgabe (Standard: °C bzw. % bei Niederschlag)
+    einheiten: dict[str, str] = field(default_factory=dict)
     tabellen: dict[str, pd.DataFrame] = field(default_factory=dict)
     dateien: list[Path] = field(default_factory=list)
 
@@ -628,6 +630,247 @@ def land_ozean(
                 beschriftung=lambda z: f"{z}–{min(z + 9, letzter_monat)}",
             ),
             "gitterkarte_land_ozean_jahrzehnte", unterordner,
+        )
+    )  # fmt: skip
+    return ergebnis
+
+
+EIGENE_DWD_TAG = "eigene Berechnung (DWD-Tageswerte)"
+DWD_KENNTAGE = "DWD-Gebietsmittel (offiziell)"
+FARBEN_KENNTAGE = {EIGENE_DWD_TAG: "#eb6834", DWD_KENNTAGE: "#2a78d6"}
+
+TEMPERATUR_FELDER = {
+    "sommertage": ("Sommertage (Tmax ≥ 25 °C)", "Tage"),
+    "heisse_tage": ("Heiße Tage (Tmax ≥ 30 °C)", "Tage"),
+    "tropennaechte": ("Tropennächte (Tmin ≥ 20 °C)", "Tage"),
+    "hitzewellentage": ("Tage in Hitzewellen (≥ 3 heiße Tage)", "Tage"),
+    "frosttage": ("Frosttage (Tmin < 0 °C)", "Tage"),
+    "eistage": ("Eistage (Tmax < 0 °C)", "Tage"),
+}
+NIEDERSCHLAG_FELDER = {
+    "starkniederschlag_10mm": ("Tage mit ≥ 10 mm", "Tage"),
+    "starkniederschlag_20mm": ("Tage mit ≥ 20 mm", "Tage"),
+    "rx1day": ("Größte Tagessumme", "mm"),
+    "rx5day": ("Größte 5-Tages-Summe", "mm"),
+    "cdd": ("Längste Trockenperiode (< 1 mm)", "Tage"),
+    "r95p_anteil": ("Anteil sehr nasser Tage am Jahresniederschlag", "%"),
+}
+
+
+def kenntage_deutschland(
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    ab_jahr: int = 1951,
+    unterordner: str = "deutschland",
+) -> Ergebnis:
+    """Kenntage und Niederschlagsindizes für Deutschland aus DWD-Tageswerten vs. DWD-Gebietsmittel.
+
+    `ab_jahr`: Beginn der Darstellung; die offiziellen DWD-Kenntage beginnen 1951.
+    """
+    from klima.kenntage import temperaturindizes
+    from klima.niederschlag import niederschlagsindizes
+
+    referenz = referenz or standard_referenzperiode()
+    ergebnis = Ergebnis()
+    tageswerte = de.einlesen.dwd_tageswerte(
+        spalten=["stations_id", "datum", "jahr", "tmax", "tmin", "niederschlag"]
+    )
+    temperatur = temperaturindizes(tageswerte[["stations_id", "datum", "jahr", "tmax", "tmin"]])
+    niederschlag = niederschlagsindizes(
+        tageswerte[["stations_id", "datum", "jahr", "niederschlag"]], referenz
+    )
+    del tageswerte
+    ergebnis.tabellen["stationen_temperatur"] = temperatur
+    ergebnis.tabellen["stationen_niederschlag"] = niederschlag
+
+    spalten_t = [*TEMPERATUR_FELDER, "tmax_mittel", "tmin_mittel", "tagesspanne"]
+    gm_t = de.indizes_gebietsmittel(temperatur, spalten_t, referenz)
+    gm_n = de.indizes_gebietsmittel(niederschlag, list(NIEDERSCHLAG_FELDER), referenz)
+    letztes = int(max(gm_t.index.max(), gm_n.index.max()))
+    gm_t, gm_n = gm_t.loc[ab_jahr:letztes], gm_n.loc[ab_jahr:letztes]
+    ergebnis.tabellen["deutschland_temperatur"] = gm_t
+    ergebnis.tabellen["deutschland_niederschlag"] = gm_n
+
+    offiziell = de.einlesen.dwd_gebietsmittel_kenntage().pivot(
+        index="jahr", columns="kenngroesse", values="wert"
+    )
+    offiziell.columns = offiziell.columns.astype(str)
+
+    def felder(definition: dict, gebietsmittel: pd.DataFrame) -> tuple[dict, dict]:
+        tabellen, einheiten = {}, {}
+        for spalte, (feldtitel, einheit) in definition.items():
+            tabelle = pd.DataFrame({EIGENE_DWD_TAG: gebietsmittel[spalte]})
+            if spalte in offiziell:
+                tabelle[DWD_KENNTAGE] = offiziell[spalte].loc[ab_jahr:letztes].astype("float64")
+            tabellen[feldtitel] = tabelle
+            einheiten[feldtitel] = einheit
+            ergebnis.trends[feldtitel] = linearer_trend(gebietsmittel[spalte], von=trend_von)
+            ergebnis.einheiten[feldtitel] = einheit
+            if spalte in offiziell:
+                ergebnis.trends[f"{feldtitel} – DWD"] = linearer_trend(
+                    offiziell[spalte].astype("float64"), von=trend_von
+                )
+                ergebnis.einheiten[f"{feldtitel} – DWD"] = einheit
+        return tabellen, einheiten
+
+    for name, definition, gebietsmittel, titel in (
+        ("kenntage_temperatur", TEMPERATUR_FELDER, gm_t, "Temperatur-Kenntage in Deutschland"),
+        ("kenntage_niederschlag", NIEDERSCHLAG_FELDER, gm_n,
+         "Niederschlagsextreme in Deutschland"),
+    ):  # fmt: skip
+        tabellen, einheiten = felder(definition, gebietsmittel)
+        untertitel = (
+            "Gebietsmittel je Jahr; dünn: Einzeljahre, kräftig: 11-jähriges Mittel. "
+            "Eigene Berechnung aus DWD-Stationen, blau: offizielle DWD-Werte (soweit vorhanden)"
+        )
+        ergebnis.dateien += statisch.speichern(
+            statisch.kleine_vielfache(tabellen, titel, einheiten, untertitel,
+                                      FARBEN_KENNTAGE, quelle=QUELLE_DWD),
+            name, unterordner,
+        )  # fmt: skip
+        ergebnis.dateien.append(
+            interaktiv.speichern(
+                interaktiv.kleine_vielfache(tabellen, titel, einheiten, untertitel,
+                                            FARBEN_KENNTAGE),
+                name, unterordner,
+            )
+        )  # fmt: skip
+
+    # Erwärmen sich Nächte schneller als Tage?
+    tag_nacht = pd.DataFrame(
+        {
+            "Tageshöchstwerte (Tmax)": gm_t["tmax_mittel"] - gm_t["tmax_mittel"].loc[
+                referenz[0] : referenz[1]].mean(),
+            "Tagestiefstwerte (Tmin)": gm_t["tmin_mittel"] - gm_t["tmin_mittel"].loc[
+                referenz[0] : referenz[1]].mean(),
+            "Tagesspanne (Tmax − Tmin)": gm_t["tagesspanne"] - gm_t["tagesspanne"].loc[
+                referenz[0] : referenz[1]].mean(),
+        }
+    )  # fmt: skip
+    ergebnis.tabellen["tag_nacht"] = tag_nacht
+    for name in tag_nacht.columns:
+        ergebnis.trends[name] = linearer_trend(tag_nacht[name], von=trend_von)
+        ergebnis.einheiten[name] = "°C"
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(
+            tag_nacht, "Erwärmen sich in Deutschland die Tage oder die Nächte schneller?",
+            untertitel=f"Jahresmittel, Abweichung von {referenz[0]}–{referenz[1]}; "
+            f"Trend Tmax {ergebnis.trends['Tageshöchstwerte (Tmax)'].text()}, "
+            f"Tmin {ergebnis.trends['Tagestiefstwerte (Tmin)'].text()}",
+            referenz=referenz, quelle=QUELLE_DWD,
+            farben={"Tageshöchstwerte (Tmax)": "#eb6834", "Tagestiefstwerte (Tmin)": "#2a78d6",
+                    "Tagesspanne (Tmax − Tmin)": "#898781"},
+        ),
+        "tag_nacht", unterordner,
+    )  # fmt: skip
+
+    # Trend der heißen Tage je Station
+    zeitraum = temperatur[temperatur["jahr"] >= trend_von].dropna(subset=["heisse_tage"])
+    anzahl = zeitraum.groupby("stations_id")["jahr"].transform("count")
+    zeitraum = zeitraum[anzahl >= 0.8 * (letztes - trend_von + 1)]
+    from klima.trend import steigung_je_gruppe
+
+    trends = (steigung_je_gruppe(zeitraum, "stations_id", "jahr", "heisse_tage") * 10).rename(
+        "trend"
+    )
+    karte = (
+        de.einlesen.dwd_stationen("tag")
+        .astype({"stations_id": str})
+        .merge(trends.reset_index(), on="stations_id")
+    )
+    ergebnis.tabellen["trend_heisse_tage_stationen"] = karte
+    titel = f"Zunahme der heißen Tage je DWD-Station seit {trend_von}"
+    untertitel = f"{len(karte)} Stationen mit mind. 80 % vollständigen Jahren"
+    ergebnis.dateien += statisch.speichern(
+        statisch.stationskarte(karte, "trend", titel, "Tage pro Dekade", untertitel,
+                               quelle=QUELLE_DWD),
+        "karte_trend_heisse_tage", unterordner, formate=("png",),
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.stationskarte(karte, "trend", titel, "Tage/Dekade", untertitel),
+            "karte_trend_heisse_tage",
+            unterordner,
+        )
+    )
+    return ergebnis
+
+
+STATION_FELDER = {
+    "sommertage": ("Sommertage (Tmax ≥ 25 °C)", "Tage"),
+    "heisse_tage": ("Heiße Tage (Tmax ≥ 30 °C)", "Tage"),
+    "tropennaechte": ("Tropennächte (Tmin ≥ 20 °C)", "Tage"),
+    "frosttage": ("Frosttage (Tmin < 0 °C)", "Tage"),
+    "eistage": ("Eistage (Tmax < 0 °C)", "Tage"),
+    "tagesspanne": ("Tagesspanne (Tmax − Tmin)", "°C"),
+    "starkniederschlag_10mm": ("Tage mit ≥ 10 mm", "Tage"),
+    "rx1day": ("Größte Tagessumme", "mm"),
+    "cdd": ("Längste Trockenperiode (< 1 mm)", "Tage"),
+}
+
+
+def kenntage_station(
+    stations_id: str,
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    unterordner: str = "stationen",
+) -> Ergebnis:
+    """Kenntage und Niederschlagsindizes einer Station – DWD (5-stellige ID) oder GHCN-Daily."""
+    from klima.kenntage import temperaturindizes
+    from klima.niederschlag import niederschlagsindizes
+
+    referenz = referenz or standard_referenzperiode()
+    einlesen = de.einlesen
+    if len(stations_id) == 11:
+        quelle, quelltext = "GHCN-Daily", "Daten: NOAA NCEI GHCN-Daily"
+        stationen = einlesen.ghcnd_stationen()
+        werte = einlesen.ghcnd_tageswerte(stationen=[stations_id])
+    else:
+        stations_id = stations_id.zfill(5)
+        quelle, quelltext = "DWD", QUELLE_DWD
+        stationen = einlesen.dwd_stationen("tag")
+        werte = einlesen.dwd_tageswerte(stationen=[stations_id])
+    treffer = stationen[stationen["stations_id"].astype(str) == stations_id]
+    if treffer.empty or werte.empty:
+        raise ValueError(f"Keine lokalen Tageswerte für Station {stations_id} ({quelle}).")
+    name = str(treffer.iloc[0]["name"])
+
+    werte = werte[["stations_id", "datum", "jahr", "tmax", "tmin", "niederschlag"]]
+    temperatur = temperaturindizes(werte.drop(columns="niederschlag")).set_index("jahr")
+    niederschlag = niederschlagsindizes(werte.drop(columns=["tmax", "tmin"]), referenz)
+    indizes = temperatur.join(niederschlag.set_index("jahr").drop(columns="stations_id"))
+    ergebnis = Ergebnis(tabellen={"indizes": indizes})
+
+    felder, einheiten = {}, {}
+    for spalte, (feldtitel, einheit) in STATION_FELDER.items():
+        reihe = indizes[spalte].astype("float64")
+        if reihe.notna().sum() < 10:
+            continue
+        felder[feldtitel] = reihe.rename(name).to_frame()
+        einheiten[feldtitel] = einheit
+        im_zeitraum = reihe.loc[trend_von:].dropna()
+        # Konstante Reihen (z. B. nie Sommertage auf einem Berg) haben keinen sinnvollen Trend
+        if len(im_zeitraum) >= 10 and im_zeitraum.nunique() > 1:
+            ergebnis.trends[feldtitel] = linearer_trend(reihe, von=trend_von)
+            ergebnis.einheiten[feldtitel] = einheit
+    jahre = indizes["sommertage"].dropna().index
+    untertitel = (
+        f"{quelle}-Station {stations_id}; nur Jahre mit mind. 90 % Tageswerten "
+        f"({int(jahre.min())}–{int(jahre.max())}); kräftig: 11-jähriges Mittel"
+        if len(jahre)
+        else f"{quelle}-Station {stations_id}"
+    )
+    datei = f"{stations_id.lower()}_{dateiname_sicher(name)}_kenntage"
+    ergebnis.dateien += statisch.speichern(
+        statisch.kleine_vielfache(felder, f"Kenntage und Extreme: {name}", einheiten, untertitel,
+                                  quelle=quelltext),
+        datei, unterordner,
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.kleine_vielfache(felder, f"Kenntage und Extreme: {name}", einheiten,
+                                        untertitel),
+            datei, unterordner,
         )
     )  # fmt: skip
     return ergebnis

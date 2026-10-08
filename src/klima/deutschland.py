@@ -174,3 +174,39 @@ def station_suchen(name: str) -> pd.DataFrame:
     """DWD-Stationen, deren Name `name` enthält (ohne Groß-/Kleinschreibung)."""
     stationen = einlesen.dwd_stationen("monat")
     return stationen[stationen["name"].str.contains(name, case=False, regex=False)]
+
+
+# --- Kenntage und Niederschlagsindizes ---------------------------------------------------
+
+
+def indizes_gebietsmittel(
+    stationsjahre: pd.DataFrame,
+    spalten: list[str],
+    referenz: tuple[int, int] | None = None,
+    groesse: float | None = None,
+    stationen: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Gebietsmittel Deutschland je Jahr für Indizes je Station und Jahr (Spalten = Indizes).
+
+    Je Index: Abweichung jeder Station von ihrem Mittel der Referenzperiode → 1°-Gitter →
+    Flächenmittel; dazu das ebenso gegitterte Referenzmittel addiert. So verzerren
+    wechselnde Stationsnetze (z. B. zusätzliche Bergstationen) das Ergebnis kaum.
+    """
+    from klima.anomalien import klimatologie
+
+    referenz = referenz or standard_referenzperiode()
+    groesse = groesse or standard_zellgroesse()
+    stationen = stationen if stationen is not None else einlesen.dwd_stationen("tag")
+    reihen = {}
+    for spalte in spalten:
+        werte = stationsjahre[["stations_id", "jahr", spalte]].dropna()
+        abweichung = anomalien(werte, spalte, referenz=referenz)
+        flaeche = regionalmittel(abweichung, stationen, groesse=groesse, zeit=("jahr",))
+        klima = klimatologie(werte, spalte, referenz=referenz).rename(
+            columns={"referenzmittel": "klima"}
+        )
+        klima_de = regionalmittel(
+            klima.assign(jahr=0), stationen, wert="klima", groesse=groesse, zeit=("jahr",)
+        )["klima"].iloc[0]
+        reihen[spalte] = flaeche.set_index("jahr")["anomalie"] + klima_de
+    return pd.DataFrame(reihen).sort_index().rename_axis("jahr")

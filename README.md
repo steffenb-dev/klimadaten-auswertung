@@ -20,6 +20,8 @@ uv run klima laden --liste              # verfügbare Datensätze und lokaler St
 uv run klima laden                      # Standardumfang (GHCNm, ERSST, GISTEMP, DWD)
 uv run klima laden ersst_v5 --von 1951 --bis 1980
 uv run klima laden ghcnd_stationen      # einzelner Datensatz außerhalb des Standardumfangs
+uv run klima ghcnd-suchen --land US --name "NY CITY"           # GHCN-Daily-Stationen finden …
+uv run klima laden ghcnd_tageswerte --station USW00094728     # … und gezielt laden
 ```
 
 Die Daten landen in `daten/roh/<datensatz>/`, ein Manifest mit Prüfsummen in `daten/roh/manifest.json`.
@@ -66,6 +68,8 @@ uv run klima analysieren station Potsdam   # … oder per Namensteil
 uv run klima analysieren jahresverlauf   # Tagesmitteltemperatur DE, jedes Jahr eine Linie
 uv run klima analysieren global          # globale Landtemperatur aus GHCNm vs. GISTEMP
 uv run klima analysieren land-ozean      # globale Temperatur Land + Ozean vs. GISTEMP/HadCRUT5
+uv run klima analysieren kenntage        # Kenntage und Niederschlagsextreme Deutschland vs. DWD
+uv run klima analysieren kenntage-station USW00094728   # Kenntage einer Station (DWD oder GHCN-Daily)
 ```
 
 Grafiken landen in `ausgabe/` – statisch als PNG/SVG, interaktiv als HTML (plotly).
@@ -79,6 +83,8 @@ Optionen wie `--trend-von`, `--referenz-von`/`--referenz-bis` siehe `--help`.
   Effekt der Homogenisierung, Abdeckung
 - [Globale Temperatur aus Land und Ozean](docs/global_land_ozean.md) – ERSST, Landanteil,
   Vergleich mit GISTEMP und HadCRUT5
+- [Kenntage und Extreme aus Tageswerten](docs/kenntage.md) – Definitionen, Vergleich mit DWD,
+  Stationen weltweit aus GHCN-Daily
 
 ## Notebooks
 
@@ -89,6 +95,7 @@ uv run jupyter lab notebooks/
 - `01_deutschland.ipynb` – Gebietsmittel Deutschland: vier Berechnungswege im Vergleich, Niederschlag, Stationstrends, Potsdam
 - `02_global_land.ipynb` – globale Landtemperatur: QCU vs. QCF, Vergleich mit GISTEMP, Homogenisierung, Abdeckung
 - `03_global_land_ozean.ipynb` – Land + Ozean (ERSST), Vergleich mit GISTEMP und HadCRUT5
+- `04_kenntage.ipynb` – Kenntage und Niederschlagsextreme, Deutschland und GHCN-Daily-Stationen
 
 ## Tests
 

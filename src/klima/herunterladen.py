@@ -111,10 +111,25 @@ def verzeichnis_auflisten(client: httpx.Client, url: str) -> list[str]:
     return sorted({urljoin(url, v) for v in verweise})
 
 
-def dateien_ermitteln(client: httpx.Client, datensatz: Datensatz, zeitraum: Zeitraum) -> list[str]:
-    """Liefert die URLs, die für einen Datensatz (und ggf. Zeitraum) zu laden sind."""
+def dateien_ermitteln(
+    client: httpx.Client,
+    datensatz: Datensatz,
+    zeitraum: Zeitraum,
+    stationen: list[str] | None = None,
+) -> list[str]:
+    """Liefert die URLs, die für einen Datensatz (und ggf. Zeitraum) zu laden sind.
+
+    Beim Typ `stationsauswahl` werden die URLs aus `stationen` gebildet.
+    """
     if datensatz.typ == "datei":
         return list(datensatz.urls)
+    if datensatz.typ == "stationsauswahl":
+        if not stationen:
+            raise ValueError(
+                f"Datensatz {datensatz.name!r} braucht Stations-IDs (Option --station)."
+            )
+        assert datensatz.url is not None
+        return [datensatz.url.format(station=s.strip()) for s in stationen]
 
     assert datensatz.url is not None and datensatz.dateimuster is not None
     ergebnis = []
@@ -236,11 +251,17 @@ class Lader:
         self.manifest = Manifest(rohverzeichnis / MANIFEST_NAME)
 
     def lade_datensatz(
-        self, datensatz: Datensatz, zeitraum: Zeitraum | None = None
+        self,
+        datensatz: Datensatz,
+        zeitraum: Zeitraum | None = None,
+        stationen: list[str] | None = None,
     ) -> list[Ergebnis]:
-        """Lädt alle (ggf. zeitlich gefilterten) Dateien eines Datensatzes."""
+        """Lädt alle (ggf. zeitlich gefilterten) Dateien eines Datensatzes.
+
+        `stationen`: Stations-IDs für Datensätze vom Typ `stationsauswahl`.
+        """
         zeitraum = zeitraum or Zeitraum()
-        urls = dateien_ermitteln(self.client, datensatz, zeitraum)
+        urls = dateien_ermitteln(self.client, datensatz, zeitraum, stationen)
         zielordner = self.rohverzeichnis / datensatz.name
         zielordner.mkdir(parents=True, exist_ok=True)
 

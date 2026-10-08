@@ -3,6 +3,8 @@
 # Jeder Abschnitt beschreibt einen Datensatz. Unterstützte Typen:
 #
 #   typ = "datei"        Feste Liste von URLs (`urls`). Keine zeitliche Einschränkung möglich.
+#   typ = "stationsauswahl"  Eine Datei je Station; `url` enthält den Platzhalter `{station}`.
+#                        Geladen wird mit `klima laden <name> --station <ID> …`.
 #   typ = "verzeichnis"  Verzeichnisliste unter `url` wird abgerufen, Dateien werden über den
 #                        regulären Ausdruck `muster` ausgewählt. Enthält das Muster benannte Gruppen
 #                        `jahr` (und optional `monat`) oder `beginn`/`ende` (JJJJMMTT), wirken
@@ -132,6 +134,20 @@ url = "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/mont
 muster = 'regional_averages_rr_\d{2}\.txt'
 standard = true
 
+[dwd_gebietsmittel_kenntage]
+beschreibung = "DWD, jährliche Gebietsmittel der Kenntage (Sommertage, heiße Tage, Tropennächte, Frost-, Eis-, Starkregentage)"
+typ = "datei"
+urls = [
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/summer_days/regional_averages_txas_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/hot_days/regional_averages_txbs_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/tropical_nights_tminGE20/regional_averages_tnes_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/frost_days/regional_averages_tnas_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/ice_days/regional_averages_txcs_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/precipGE10mm_days/regional_averages_rrsfs_year.txt",
+    "https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/annual/precipGE20mm_days/regional_averages_rrsgs_year.txt",
+]
+standard = true
+
 # --- GHCN-Daily (Tageswerte) ---------------------------------------------------
 
 [ghcnd_stationen]
@@ -148,4 +164,10 @@ beschreibung = "GHCN-Daily, alle Stationen weltweit, eine Datei pro Jahr (20–1
 typ = "verzeichnis"
 url = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/by_year/"
 muster = '(?P<jahr>\d{4})\.csv\.gz'
+standard = false
+
+[ghcnd_tageswerte]
+beschreibung = "GHCN-Daily, Tageswerte ausgewählter Stationen weltweit (klima laden ghcnd_tageswerte --station ID)"
+typ = "stationsauswahl"
+url = "https://www.ncei.noaa.gov/pub/data/ghcn/daily/by_station/{station}.csv.gz"
 standard = false

@@ -240,3 +240,52 @@ def dwd_tageswerte(
     if "stations_id" in werte:
         werte["stations_id"] = werte["stations_id"].cat.remove_unused_categories()
     return werte
+
+
+def dwd_gebietsmittel_kenntage(
+    kenngroessen: Iterable[str] | None = None,
+    gebiete: Iterable[str] | None = ("Deutschland",),
+) -> pd.DataFrame:
+    """Offizielle jährliche DWD-Gebietsmittel der Kenntage (ab 1951).
+
+    Kenngrößen: `sommertage`, `heisse_tage`, `tropennaechte`, `frosttage`, `eistage`,
+    `starkniederschlag_10mm`, `starkniederschlag_20mm`.
+    """
+    filter_ = []
+    if kenngroessen is not None:
+        filter_.append(("kenngroesse", "in", list(kenngroessen)))
+    if gebiete is not None:
+        filter_.append(("gebiet", "in", list(gebiete)))
+    pfad = _ordner("dwd_gebietsmittel_kenntage") / "jahreswerte.parquet"
+    return _lies(pfad, filter_, None).reset_index(drop=True)
+
+
+# --- GHCN-Daily ----------------------------------------------------------------------
+
+
+def ghcnd_stationen(laender: Iterable[str] | None = None) -> pd.DataFrame:
+    """Alle GHCN-Daily-Stationen (über 100.000), optional nach FIPS-Ländercodes gefiltert."""
+    filter_ = [("land", "in", list(laender))] if laender is not None else []
+    return _lies(_ordner("ghcnd_stationen") / "stationen.parquet", filter_, None)
+
+
+def ghcnd_inventar(elemente: Iterable[str] | None = None) -> pd.DataFrame:
+    """Inventar: je Station und Element (TMAX, TMIN, PRCP, …) erster und letzter Jahrgang."""
+    filter_ = [("element", "in", list(elemente))] if elemente is not None else []
+    return _lies(_ordner("ghcnd_stationen") / "inventar.parquet", filter_, None)
+
+
+def ghcnd_tageswerte(
+    stationen: Iterable[str] | None = None,
+    von: int | None = None,
+    bis: int | None = None,
+    spalten: list[str] | None = None,
+) -> pd.DataFrame:
+    """Tageswerte der lokal geladenen GHCN-Daily-Stationen (gleiche Spalten wie beim DWD)."""
+    filter_ = _jahresfilter(von, bis)
+    if stationen is not None:
+        filter_.append(("stations_id", "in", list(stationen)))
+    werte = _lies(_ordner("ghcnd_tageswerte") / "tageswerte.parquet", filter_, spalten)
+    if "stations_id" in werte:
+        werte["stations_id"] = werte["stations_id"].cat.remove_unused_categories()
+    return werte

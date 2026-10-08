@@ -230,6 +230,8 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
 - F-DL-8: Zeitliche Einschränkung mit `--von` / `--bis` (Jahr oder Jahr-Monat). Umsetzung je Quelle nach Abschnitt 2.7:
   Dateiauswahl (ERSST, GHCN-Daily `by_year`, DWD), Abfrageparameter (NCEI Access Data Service) oder –
   wo der Server nichts anbietet (GHCNm) – Gesamtdownload mit Hinweis, dass erst beim Aufbereiten gefiltert wird.
+- F-DL-10: Datensatztyp `stationsauswahl` (z. B. GHCN-Daily): eine Datei je Station, Auswahl per
+  `--station`; Suche geeigneter Stationen mit `klima ghcnd-suchen`.
 - F-DL-9: Bedingte Downloads über `ETag`/`Last-Modified` und Fortsetzen abgebrochener Downloads über HTTP-Range.
 
 ### 4.2 Einlesen / Aufbereitung
@@ -301,7 +303,8 @@ Hovern oder Auswählen echten Mehrwert bringt.
 
 - F-UI-1: CLI `klima` mit deutschen Unterbefehlen: `laden`, `aufbereiten`,
   `analysieren deutschland`, `analysieren station <ID|Name>`, `analysieren jahresverlauf`,
-  `analysieren global`, `analysieren land-ozean`, `stationen`.
+  `analysieren global`, `analysieren land-ozean`, `analysieren kenntage`,
+  `analysieren kenntage-station <ID>`, `stationen`, `ghcnd-suchen`.
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -353,7 +356,7 @@ klimadaten-auswertung/
 │   ├── einlesen.py           # Lade-API für Notebooks
 │   ├── archiv.py             # Lesen direkt aus .tar.gz/.zip/.gz im Arbeitsspeicher
 │   ├── aufbereiten.py        # Rohdaten -> Parquet/NetCDF, Aktualitätsprüfung
-│   ├── parser/               # ghcnm, ersst, dwd, vergleichsreihen (später ghcnd)
+│   ├── parser/               # ghcnm, ghcnd, ersst, dwd, vergleichsreihen
 │   ├── anomalien.py          # Referenzperiode, Anomalien (absolut und relativ), Jahreswerte
 │   ├── gitter.py             # Gitterung, Flächengewichtung (später Land-See-Maske)
 │   ├── trend.py              # lineare Trends, gleitende Mittel
@@ -363,8 +366,8 @@ klimadaten-auswertung/
 │   ├── land_ozean.py         # ERSST-Anomalien, Landanteil, Kombination Land + Ozean
 │   ├── bestand.py            # Übersicht der lokal vorhandenen Stationen
 │   ├── auswertungen.py       # fertige Auswertungen inkl. Grafiken (für CLI und Notebooks)
-│   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes (M6)
-│   ├── niederschlag.py       # Niederschlagsindizes (M6)
+│   ├── kenntage.py           # Temperatur-Kenntage, Hitzewellen, Tagesspanne
+│   ├── niederschlag.py       # Niederschlagsindizes (Starkregen, Rx1/5day, CDD/CWD, R95p)
 │   └── grafik/               # stil.py, statisch.py (matplotlib), interaktiv.py (plotly)
 ├── notebooks/                # explorative Analysen, je Meilenstein
 ├── tests/

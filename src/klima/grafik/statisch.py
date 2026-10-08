@@ -389,3 +389,65 @@ def histogramm(
     _titel(ax, titel, untertitel)
     _quelle(fig, quelle)
     return fig
+
+
+def kleine_vielfache(
+    felder: dict[str, pd.DataFrame],
+    titel: str,
+    einheiten: dict[str, str] | None = None,
+    untertitel: str | None = None,
+    farben: dict[str, str] | None = None,
+    glaettung: int | None = 11,
+    spalten: int = 3,
+    quelle: str | None = None,
+) -> Figure:
+    """Mehrere kleine Zeitreihen-Diagramme mit eigener y-Achse (eine Größe je Feld).
+
+    `felder`: Feldtitel -> Tabelle (Index = Jahr, Spalten = Reihen). Gleiche Reihen haben
+    in allen Feldern dieselbe Farbe; eine gemeinsame Legende steht oben.
+    """
+    stil.anwenden()
+    einheiten = einheiten or {}
+    namen = list(dict.fromkeys(n for tabelle in felder.values() for n in tabelle.columns))
+    farben = stil.farben_fuer(namen, farben)
+    zeilen = int(np.ceil(len(felder) / spalten))
+    hoehe = 3.0 * zeilen + 1.4
+    fig, achsen = plt.subplots(
+        zeilen, spalten, figsize=(4.2 * spalten, hoehe), sharex=True, squeeze=False
+    )
+    # Feste Kopfzeile (Titel, Untertitel, Legende) und Fußzeile (Quelle) in Zoll
+    fig.subplots_adjust(
+        left=0.055, right=0.99, top=1 - 1.25 / hoehe, bottom=0.45 / hoehe,
+        hspace=0.32, wspace=0.2,
+    )  # fmt: skip
+    for ax, (feldtitel, tabelle) in zip(achsen.flat, felder.items(), strict=False):
+        for name in tabelle.columns:
+            reihe = tabelle[name].dropna()
+            if reihe.empty:
+                continue
+            if glaettung:
+                ax.plot(reihe.index, reihe.values, color=farben[name], lw=0.7, alpha=0.45)
+                glatt = gleitendes_mittel(reihe, glaettung).dropna()
+                ax.plot(glatt.index, glatt.values, color=farben[name], lw=1.8)
+            else:
+                ax.plot(reihe.index, reihe.values, color=farben[name], lw=1.4)
+        ax.set_title(feldtitel, fontsize=10.5, pad=4)
+        if einheiten.get(feldtitel):
+            ax.set_ylabel(einheiten[feldtitel], fontsize=9)
+        ax.yaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
+        ax.tick_params(labelsize=8.5)
+        ax.margins(x=0.01)
+    for ax in list(achsen.flat)[len(felder) :]:
+        ax.set_visible(False)
+    zoll = 1 / hoehe
+    fig.text(0.01, 1 - 0.12 * zoll, titel, ha="left", va="top", fontsize=13, fontweight="bold")
+    if untertitel:
+        fig.text(0.01, 1 - 0.45 * zoll, untertitel, ha="left", va="top", color=stil.TINTE_2,
+                 fontsize=9.5)  # fmt: skip
+    griffe = [plt.Line2D([], [], color=farben[n], lw=2) for n in namen]
+    fig.legend(griffe, namen, loc="upper left", bbox_to_anchor=(0.005, 1 - 0.7 * zoll),
+               ncols=min(len(namen), 3), fontsize=9, frameon=False)  # fmt: skip
+    if quelle:
+        fig.text(0.01, 0.1 * zoll, quelle, ha="left", va="bottom", color=stil.TINTE_GEDAEMPFT,
+                 fontsize=8)  # fmt: skip
+    return fig

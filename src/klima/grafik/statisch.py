@@ -37,8 +37,14 @@ def zeitreihen(
     referenz: tuple[int, int] | None = None,
     farben: dict[str, str] | None = None,
     quelle: str | None = None,
+    y_beschriftung: str | None = None,
+    x_beschriftung: str | None = None,
+    legende_ort: str = "upper left",
 ) -> Figure:
     """Jahresreihen (Spalten) als Linien: dünn die Jahreswerte, kräftig das gleitende Mittel.
+
+    `y_beschriftung`/`x_beschriftung` ersetzen die Standardachsentitel (z. B. für einen
+    Tagesgang mit Stunden statt Jahren auf der x-Achse).
 
     Jede Reihe wird am rechten Ende direkt beschriftet; die Referenzperiode ist hinterlegt.
     """
@@ -83,9 +89,11 @@ def zeitreihen(
             )  # fmt: skip
 
     ax.yaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
-    ax.set_ylabel(f"Abweichung ({einheit})")
+    ax.set_ylabel(y_beschriftung or f"Abweichung ({einheit})")
+    if x_beschriftung:
+        ax.set_xlabel(x_beschriftung)
     ax.margins(x=0.01)
-    ax.legend(loc="upper left", fontsize=8.5)
+    ax.legend(loc=legende_ort, fontsize=8.5)
     _titel(ax, titel, untertitel)
     _quelle(fig, quelle)
     return fig
@@ -411,13 +419,15 @@ def kleine_vielfache(
     namen = list(dict.fromkeys(n for tabelle in felder.values() for n in tabelle.columns))
     farben = stil.farben_fuer(namen, farben)
     zeilen = int(np.ceil(len(felder) / spalten))
-    hoehe = 3.0 * zeilen + 1.4
+    zweizeilig = any("\n" in feldtitel for feldtitel in felder)
+    kopf = 1.25 + (0.25 if zweizeilig else 0.0)  # Platz für Titel, Untertitel und Legende
+    hoehe = 3.0 * zeilen + kopf + 0.15
     fig, achsen = plt.subplots(
         zeilen, spalten, figsize=(4.2 * spalten, hoehe), sharex=True, squeeze=False
     )
     # Feste Kopfzeile (Titel, Untertitel, Legende) und Fußzeile (Quelle) in Zoll
     fig.subplots_adjust(
-        left=0.055, right=0.99, top=1 - 1.25 / hoehe, bottom=0.45 / hoehe,
+        left=0.055, right=0.99, top=1 - kopf / hoehe, bottom=0.45 / hoehe,
         hspace=0.32, wspace=0.2,
     )  # fmt: skip
     for ax, (feldtitel, tabelle) in zip(achsen.flat, felder.items(), strict=False):
@@ -450,4 +460,49 @@ def kleine_vielfache(
     if quelle:
         fig.text(0.01, 0.1 * zoll, quelle, ha="left", va="bottom", color=stil.TINTE_GEDAEMPFT,
                  fontsize=8)  # fmt: skip
+    return fig
+
+
+def waermebild(
+    tabelle: pd.DataFrame,
+    titel: str,
+    einheit: str = "°C",
+    untertitel: str | None = None,
+    x_beschriftung: str | None = None,
+    y_beschriftung: str | None = None,
+    quelle: str | None = None,
+) -> Figure:
+    """Farbraster (z. B. Stunde × Jahrzehnt) mit divergierender Skala um 0.
+
+    `tabelle`: Zeilen = y-Achse, Spalten = x-Achse; Werte werden als Zahl in die Zellen geschrieben.
+    """
+    stil.anwenden()
+    werte = tabelle.to_numpy(dtype=float)
+    grenze = stil.robuste_grenze(werte[np.isfinite(werte)], 100)
+    fig, ax = plt.subplots(figsize=(1.0 + 0.9 * tabelle.shape[1], 1.6 + 0.3 * tabelle.shape[0]),
+                           layout="constrained")  # fmt: skip
+    bild = ax.imshow(
+        np.ma.masked_invalid(werte), cmap=stil.DIVERGIEREND, aspect="auto",
+        norm=TwoSlopeNorm(vcenter=0, vmin=-grenze, vmax=grenze),
+    )  # fmt: skip
+    for (zeile, spalte), wert in np.ndenumerate(werte):
+        if np.isfinite(wert):
+            hell = abs(wert) > 0.6 * grenze
+            ax.text(spalte, zeile, stil.zahl(wert, 1), ha="center", va="center", fontsize=7.5,
+                    color="white" if hell else stil.TINTE_2)  # fmt: skip
+    ax.set_xticks(range(tabelle.shape[1]), [str(s) for s in tabelle.columns], fontsize=8.5)
+    ax.set_yticks(range(tabelle.shape[0]), [str(z) for z in tabelle.index], fontsize=8.5)
+    ax.grid(False)
+    for seite in ax.spines.values():
+        seite.set_visible(False)
+    if x_beschriftung:
+        ax.set_xlabel(x_beschriftung)
+    if y_beschriftung:
+        ax.set_ylabel(y_beschriftung)
+    leiste = fig.colorbar(bild, ax=ax, shrink=0.6, pad=0.02)
+    leiste.set_label(einheit, color=stil.TINTE_2)
+    leiste.ax.yaxis.set_major_formatter(stil.DEUTSCHES_FORMAT)
+    leiste.outline.set_visible(False)
+    _titel(ax, titel, untertitel)
+    _quelle(fig, quelle)
     return fig

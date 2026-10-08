@@ -5,7 +5,8 @@
 #   typ = "datei"        Feste Liste von URLs (`urls`). Keine zeitliche Einschränkung möglich.
 #   typ = "stationsauswahl"  Eine Datei je Station; `url` enthält den Platzhalter `{station}`.
 #                        Geladen wird mit `klima laden <name> --station <ID> …`.
-#   typ = "verzeichnis"  Verzeichnisliste unter `url` wird abgerufen, Dateien werden über den
+#   typ = "verzeichnis"  (Hat das Muster eine Gruppe `station`, wählt `--station` einzelne Stationen.)
+#                        Verzeichnisliste unter `url` wird abgerufen, Dateien werden über den
 #                        regulären Ausdruck `muster` ausgewählt. Enthält das Muster benannte Gruppen
 #                        `jahr` (und optional `monat`) oder `beginn`/`ende` (JJJJMMTT), wirken
 #                        `--von`/`--bis` als Dateiauswahl.
@@ -119,6 +120,20 @@ typ = "verzeichnis"
 url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/daily/kl/recent/"
 muster = 'tageswerte_KL_\d{5}_akt\.zip'
 standard = true
+
+[dwd_stunde_historisch]
+beschreibung = "DWD, Stundenwerte Lufttemperatur je Station, geprüft (gesamt ~800 MB – mit --station auswählen)"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/hourly/air_temperature/historical/"
+muster = 'stundenwerte_TU_(?P<station>\d{5})_(?P<beginn>\d{8})_(?P<ende>\d{8})_hist\.zip'
+standard = false
+
+[dwd_stunde_aktuell]
+beschreibung = "DWD, Stundenwerte Lufttemperatur je Station, aktuell (ca. letzte 500 Tage)"
+typ = "verzeichnis"
+url = "https://opendata.dwd.de/climate_environment/CDC/observations_germany/climate/hourly/air_temperature/recent/"
+muster = 'stundenwerte_TU_(?P<station>\d{5})_akt\.zip'
+standard = false
 
 [dwd_gebietsmittel_temperatur]
 beschreibung = "DWD, Gebietsmittel Lufttemperatur (Deutschland + Bundesländer), monatlich"

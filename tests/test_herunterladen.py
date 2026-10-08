@@ -288,3 +288,31 @@ def test_zeitfilter_entfernt_keine_dateien(tmp_path):
     ergebnisse = lader_mit(tmp_path, server).lade_datensatz(ersst, Zeitraum.aus_text("1951"))
     assert "entfernt" not in {e.status for e in ergebnisse}
     assert len(list((tmp_path / "ersst").iterdir())) == 4
+
+
+def test_stationsfilter_im_verzeichnis(tmp_path):
+    liste = (
+        '<a href="stundenwerte_TU_03987_18930101_20251231_hist.zip">x</a>'
+        '<a href="stundenwerte_TU_00399_19691201_20110801_hist.zip">x</a>'
+        '<a href="stundenwerte_TU_05792_19500101_20251231_hist.zip">x</a>'
+    )
+
+    def server(request):
+        if request.url.path.endswith("/"):
+            return httpx.Response(200, text=liste)
+        return httpx.Response(200, content=b"zip")
+
+    stunde = datensatz(
+        name="stunde",
+        typ="verzeichnis",
+        url=BASIS,
+        muster=r"stundenwerte_TU_(?P<station>\d{5})_(?P<beginn>\d{8})_(?P<ende>\d{8})_hist\.zip",
+    )
+    assert stunde.stationsfilter_moeglich
+    lader = lader_mit(tmp_path, server)
+    ergebnisse = lader.lade_datensatz(stunde, stationen=["3987", "399"])
+    assert sorted(e.pfad.name[16:21] for e in ergebnisse) == ["00399", "03987"]
+    # Ein weiterer gefilterter Lauf entfernt die zuvor geladenen Stationen nicht
+    weitere = lader_mit(tmp_path, server).lade_datensatz(stunde, stationen=["5792"])
+    assert "entfernt" not in {e.status for e in weitere}
+    assert len(list((tmp_path / "stunde").iterdir())) == 3

@@ -365,3 +365,30 @@ def kleine_vielfache(
     fig.update_layout(height=320 * zeilen + 120, legend={"orientation": "h", "y": -0.06, "x": 0})
     fig.update_yaxes(gridcolor=stil.GITTERLINIE, showgrid=True, zeroline=False)
     return _grundlayout(fig, titel, untertitel)
+
+
+def waermebild(
+    tabelle: pd.DataFrame,
+    titel: str,
+    einheit: str = "°C",
+    untertitel: str | None = None,
+    x_beschriftung: str | None = None,
+    y_beschriftung: str | None = None,
+) -> go.Figure:
+    """Interaktives Farbraster (z. B. Stunde × Jahrzehnt) mit divergierender Skala um 0."""
+    werte = tabelle.to_numpy(dtype=float)
+    grenze = stil.robuste_grenze(werte[np.isfinite(werte)], 100)
+    fig = go.Figure(
+        go.Heatmap(
+            z=werte, x=[str(s) for s in tabelle.columns], y=[str(z) for z in tabelle.index],
+            colorscale=_plotly_skala(), zmin=-grenze, zmax=grenze,
+            colorbar={"title": {"text": einheit}, "thickness": 12},
+            hovertemplate=f"%{{x}}, %{{y}}: %{{z:+.2f}} {einheit}<extra></extra>",
+        )
+    )  # fmt: skip
+    fig.update_layout(
+        height=640,
+        xaxis={"title": x_beschriftung, "type": "category"},
+        yaxis={"title": y_beschriftung, "type": "category", "autorange": "reversed"},
+    )
+    return _grundlayout(fig, titel, untertitel)

@@ -150,7 +150,9 @@ TAGESWERTE_SPALTEN = {
     "QN_4": "qn_klima",  # Qualitätsniveau der übrigen Größen
 }
 
-_STATIONSDATEI = re.compile(r"(?:monats|tages)werte_KL_(\d{5})_(?:(\d{8})_(\d{8})_hist|akt)\.zip")
+_STATIONSDATEI = re.compile(
+    r"(?:monats|tages|stunden)werte_(?:KL|TU)_(\d{5})_(?:(\d{8})_(\d{8})_hist|akt)\.zip"
+)
 
 
 def _lies_produkt(pfad: Path, muster: str) -> pd.DataFrame:
@@ -237,3 +239,60 @@ def lies_monatswerte_alle(dateien: list[Path]) -> pd.DataFrame:
 def lies_tageswerte_alle(dateien: list[Path]) -> pd.DataFrame:
     """Tageswerte aller Stationen, historisch und aktuell zusammengeführt."""
     return _zusammenfuehren(dateien, lies_tageswerte_station, ["datum"])
+
+
+# --- Stundenwerte Lufttemperatur (TU) -------------------------------------------------------
+
+
+def _mez_zeitraeume(pfad: Path) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Zeiträume, in denen die Stundenwerte in MEZ statt UTC angegeben sind.
+
+    Quelle: `Metadaten_Parameter_tu_stunde_*.txt` im ZIP. Der DWD vermerkt dort je Zeitraum
+    „Stundenwerte in MEZ“ oder „Stundenwerte in UTC“ – oft wechselt das innerhalb einer Station.
+    """
+    try:
+        with oeffne_text(pfad, "Metadaten_Parameter_tu_stunde_*.txt", encoding=KODIERUNG) as datei:
+            zeilen = datei.read().splitlines()
+    except FileNotFoundError:
+        return []
+    zeitraeume = []
+    for zeile in zeilen[1:]:
+        felder = zeile.split(";")
+        if len(felder) < 6 or not felder[0].strip().isdigit() or felder[4].strip() != "TT_TU":
+            continue
+        if "MEZ" in zeile:
+            von = pd.Timestamp(felder[1].strip())
+            bis = pd.Timestamp(felder[2].strip()) + pd.Timedelta(hours=23)
+            zeitraeume.append((von, bis))
+    return zeitraeume
+
+
+def lies_stundenwerte_station(pfad: Path) -> pd.DataFrame:
+    """Stündliche Lufttemperatur einer Station, einheitlich in UTC.
+
+    Spalten: `stations_id`, `zeit_utc`, `jahr` (nach MEZ), `temperatur` (°C), `feuchte` (%),
+    `qn`. Werte, die laut Metadaten in MEZ angegeben sind, werden um eine Stunde auf UTC
+    zurückgerechnet.
+    """
+    tabelle = _lies_produkt(pfad, "produkt_tu_stunde_*.txt")
+    zeit = pd.to_datetime(tabelle["MESS_DATUM"].astype(str), format="%Y%m%d%H")
+    in_mez = pd.Series(False, index=tabelle.index)
+    for von, bis in _mez_zeitraeume(pfad):
+        in_mez |= (zeit >= von) & (zeit <= bis)
+    zeit_utc = zeit - pd.to_timedelta(in_mez.astype(int), unit="h")
+    werte = pd.DataFrame(
+        {
+            "stations_id": tabelle["STATIONS_ID"].astype(str).str.zfill(5),
+            "zeit_utc": zeit_utc,
+            "jahr": (zeit_utc + pd.Timedelta(hours=1)).dt.year.astype("int16"),
+            "temperatur": tabelle["TT_TU"].astype("float32"),
+            "feuchte": tabelle["RF_TU"].astype("float32") if "RF_TU" in tabelle else float("nan"),
+            "qn": tabelle["QN_9"].astype("Int8") if "QN_9" in tabelle else pd.NA,
+        }
+    )
+    return werte.dropna(subset=["temperatur"])
+
+
+def lies_stundenwerte_alle(dateien: list[Path]) -> pd.DataFrame:
+    """Stundenwerte aller Stationen, historisch und aktuell zusammengeführt (Zeit in UTC)."""
+    return _zusammenfuehren(dateien, lies_stundenwerte_station, ["zeit_utc"])

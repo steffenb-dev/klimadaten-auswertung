@@ -70,6 +70,9 @@ uv run klima analysieren global          # globale Landtemperatur aus GHCNm vs. 
 uv run klima analysieren land-ozean      # globale Temperatur Land + Ozean vs. GISTEMP/HadCRUT5
 uv run klima analysieren kenntage        # Kenntage und Niederschlagsextreme Deutschland vs. DWD
 uv run klima analysieren kenntage-station USW00094728   # Kenntage einer Station (DWD oder GHCN-Daily)
+uv run klima analysieren tagesgang       # Erwärmung je Uhrzeit, Wärmeinsel (DWD-Stundenwerte)
+uv run klima analysieren stadt-land      # Trends städtischer vs. ländlicher Stationen
+uv run klima dashboard                   # ausgabe/index.html – Übersicht aller Grafiken
 ```
 
 Grafiken landen in `ausgabe/` – statisch als PNG/SVG, interaktiv als HTML (plotly).
@@ -85,6 +88,8 @@ Optionen wie `--trend-von`, `--referenz-von`/`--referenz-bis` siehe `--help`.
   Vergleich mit GISTEMP und HadCRUT5
 - [Kenntage und Extreme aus Tageswerten](docs/kenntage.md) – Definitionen, Vergleich mit DWD,
   Stationen weltweit aus GHCN-Daily
+- [Tagesgang, Wärmeinsel und Stadt/Land](docs/tagesgang_stadt_land.md) – Stundenwerte (MEZ/UTC),
+  Erwärmung je Uhrzeit, Wärmeinsel, Einfluss der Städte auf Trends, Dashboard
 
 ## Notebooks
 

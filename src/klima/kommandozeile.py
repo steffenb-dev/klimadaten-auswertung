@@ -107,6 +107,8 @@ def laden(
                 "  Hinweis: Die Quelle bietet keine zeitliche Einschränkung – "
                 "der Gesamtbestand wird geladen, gefiltert wird beim Aufbereiten."
             )
+        if station and not datensatz.stationsfilter_moeglich:
+            typer.echo("  Hinweis: --station wirkt bei diesem Datensatz nicht.")
         if datensatz.typ == "stationsauswahl" and not station:
             typer.echo(
                 "  Übersprungen: Stations-IDs mit --station angeben (siehe klima ghcnd-suchen)."
@@ -473,3 +475,56 @@ def analysieren_kenntage_station(
         raise typer.BadParameter(str(fehler)) from fehler
     typer.secho(f"Trends Station {station}:", bold=True)
     _trends_ausgeben(ergebnis)
+
+
+@analysieren_app.command("tagesgang")
+def analysieren_tagesgang(
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Tagesgang der Erwärmung und städtische Wärmeinsel aus DWD-Stundenwerten."""
+    from klima import auswertungen
+
+    try:
+        ergebnis = auswertungen.tagesgang(trend_von, _referenz(referenz_von, referenz_bis))
+    except ValueError as fehler:
+        raise typer.BadParameter(str(fehler)) from fehler
+    tabelle = ergebnis.tabellen["trend_je_stunde"]
+    typer.secho(f"Trend je Uhrzeit (MEZ) seit {trend_von}, °C pro Dekade:", bold=True)
+    for name in tabelle.columns:
+        typer.echo(
+            f"  {name:<22} stärkste Erwärmung {tabelle[name].max():.2f} um "
+            f"{int(tabelle[name].idxmax())} Uhr, schwächste {tabelle[name].min():.2f} um "
+            f"{int(tabelle[name].idxmin())} Uhr".replace(".", ",")
+        )
+    typer.secho("Wärmeinsel (Stadt − Land, höhenbereinigt):", bold=True)
+    for zeile in ergebnis.tabellen["waermeinsel"].itertuples():
+        typer.echo(
+            f"  {zeile.paar}: Sommer bis {zeile.sommer_max:+.1f} °C um {zeile.sommer_max_uhr} Uhr, "
+            f"Winter im Mittel {zeile.winter_mittel:+.1f} °C".replace(".", ",")
+        )
+    typer.echo(f"\n{len(ergebnis.dateien)} Datei(en) geschrieben, z. B. {ergebnis.dateien[0]}")
+
+
+@analysieren_app.command("stadt-land")
+def analysieren_stadt_land(
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Trends städtischer und ländlicher Stationen: global (GHCNm) und Deutschland (DWD)."""
+    from klima import auswertungen
+
+    ergebnis = auswertungen.stadt_land(trend_von, _referenz(referenz_von, referenz_bis))
+    typer.secho("Trends Stadt vs. Land:", bold=True)
+    _trends_ausgeben(ergebnis)
+
+
+@app.command()
+def dashboard() -> None:
+    """Übersichtsseite ausgabe/index.html mit allen erzeugten Grafiken schreiben."""
+    from klima.dashboard import erzeugen
+
+    pfad = erzeugen()
+    typer.echo(f"Übersicht geschrieben: {pfad}\nÖffnen z. B. mit: xdg-open {pfad}")

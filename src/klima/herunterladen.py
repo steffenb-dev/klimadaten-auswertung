@@ -138,9 +138,17 @@ def dateien_ermitteln(
         if not url.startswith(datensatz.url) or "/" in url[len(datensatz.url) :]:
             continue
         treffer = datensatz.dateimuster.fullmatch(dateiname(url))
-        if treffer and _im_zeitraum(treffer, zeitraum):
+        if treffer and _im_zeitraum(treffer, zeitraum) and _station_passt(treffer, stationen):
             ergebnis.append(url)
     return ergebnis
+
+
+def _station_passt(treffer: re.Match[str], stationen: list[str] | None) -> bool:
+    """Stationsfilter für Verzeichnisse, deren Dateimuster eine Gruppe `station` hat."""
+    if not stationen or "station" not in treffer.re.groupindex:
+        return True
+    gesucht = {s.strip().zfill(len(treffer["station"])) for s in stationen}
+    return treffer["station"] in gesucht
 
 
 # --- Manifest ------------------------------------------------------------------
@@ -273,7 +281,9 @@ class Lader:
                 ]
             else:
                 ergebnisse = self._lade_parallel(urls, zielordner, datensatz)
-            if datensatz.typ == "verzeichnis" and zeitraum.offen:
+            # Nur bei vollständigem Abgleich aufräumen – mit Zeit- oder Stationsfilter liefert
+            # die Auswahl bewusst nur einen Teil der Serverdateien
+            if datensatz.typ == "verzeichnis" and zeitraum.offen and not stationen:
                 ergebnisse += self._entferne_verwaiste(datensatz, set(urls))
         finally:
             self.manifest.speichern()

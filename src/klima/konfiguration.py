@@ -45,6 +45,13 @@ class Datensatz:
         return self._muster_kompiliert
 
     @property
+    def stationsfilter_moeglich(self) -> bool:
+        """True, wenn `--station` die Dateiauswahl einschränken kann."""
+        if self.typ == "stationsauswahl":
+            return True
+        return self.dateimuster is not None and "station" in self.dateimuster.groupindex
+
+    @property
     def zeitfilter_moeglich(self) -> bool:
         """True, wenn `--von`/`--bis` die Dateiauswahl einschränken können."""
         if self.dateimuster is None:

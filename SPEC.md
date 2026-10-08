@@ -232,6 +232,8 @@ Niederschlag verhält sich statistisch anders als Temperatur und braucht eigene 
   wo der Server nichts anbietet (GHCNm) – Gesamtdownload mit Hinweis, dass erst beim Aufbereiten gefiltert wird.
 - F-DL-10: Datensatztyp `stationsauswahl` (z. B. GHCN-Daily): eine Datei je Station, Auswahl per
   `--station`; Suche geeigneter Stationen mit `klima ghcnd-suchen`.
+- F-DL-11: Verzeichnisse mit Gruppe `station` im Dateimuster (z. B. DWD-Stundenwerte) lassen sich mit
+  `--station` auf einzelne Stationen einschränken.
 - F-DL-9: Bedingte Downloads über `ETag`/`Last-Modified` und Fortsetzen abgebrochener Downloads über HTTP-Range.
 
 ### 4.2 Einlesen / Aufbereitung
@@ -304,7 +306,8 @@ Hovern oder Auswählen echten Mehrwert bringt.
 - F-UI-1: CLI `klima` mit deutschen Unterbefehlen: `laden`, `aufbereiten`,
   `analysieren deutschland`, `analysieren station <ID|Name>`, `analysieren jahresverlauf`,
   `analysieren global`, `analysieren land-ozean`, `analysieren kenntage`,
-  `analysieren kenntage-station <ID>`, `stationen`, `ghcnd-suchen`.
+  `analysieren kenntage-station <ID>`, `analysieren tagesgang`, `analysieren stadt-land`,
+  `stationen`, `ghcnd-suchen`, `dashboard`.
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -365,6 +368,9 @@ klimadaten-auswertung/
 │   ├── weltweit.py           # globale/hemisphärische Landtemperatur, Homogenisierung, Abdeckung
 │   ├── land_ozean.py         # ERSST-Anomalien, Landanteil, Kombination Land + Ozean
 │   ├── bestand.py            # Übersicht der lokal vorhandenen Stationen
+│   ├── tagesgang.py          # Erwärmung je Uhrzeit, Wärmeinsel (Stundenwerte)
+│   ├── stadt_land.py         # Einteilung städtisch/ländlich (Natural Earth)
+│   ├── dashboard.py          # Übersichtsseite ausgabe/index.html
 │   ├── auswertungen.py       # fertige Auswertungen inkl. Grafiken (für CLI und Notebooks)
 │   ├── kenntage.py           # Temperatur-Kenntage, Hitzewellen, Tagesspanne
 │   ├── niederschlag.py       # Niederschlagsindizes (Starkregen, Rx1/5day, CDD/CWD, R95p)

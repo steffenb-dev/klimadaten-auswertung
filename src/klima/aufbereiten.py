@@ -114,6 +114,10 @@ def _ghcnd_tageswerte(dateien: list[Path]) -> list[Ausgabe]:
     return [Ausgabe("tageswerte", ghcnd.lies_stationen_alle(dateien))]
 
 
+def _dwd_stundenwerte(dateien: list[Path]) -> list[Ausgabe]:
+    return [Ausgabe("stundenwerte", dwd.lies_stundenwerte_alle(dateien))]
+
+
 def _dwd_kenntage(dateien: list[Path]) -> list[Ausgabe]:
     return [Ausgabe("jahreswerte", dwd.lies_jahresgebietsmittel_kenntage_alle(dateien))]
 
@@ -136,6 +140,7 @@ AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "dwd_monatswerte": _dwd_monatswerte,
     "dwd_tageswerte": _dwd_tageswerte,
     "dwd_gebietsmittel_kenntage": _dwd_kenntage,
+    "dwd_stundenwerte": _dwd_stundenwerte,
     "ghcnd_stationen": _ghcnd_stationen,
     "ghcnd_tageswerte": _ghcnd_tageswerte,
 }
@@ -144,6 +149,7 @@ AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
 QUELLDATENSAETZE: dict[str, tuple[str, ...]] = {
     "dwd_monatswerte": ("dwd_monat_historisch", "dwd_monat_aktuell"),
     "dwd_tageswerte": ("dwd_tag_historisch", "dwd_tag_aktuell"),
+    "dwd_stundenwerte": ("dwd_stunde_historisch", "dwd_stunde_aktuell"),
 }
 
 

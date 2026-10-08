@@ -874,3 +874,221 @@ def kenntage_station(
         )
     )  # fmt: skip
     return ergebnis
+
+
+# --- M7: Tagesgang, Wärmeinsel, Stadt/Land ---------------------------------------------------
+
+TAGESGANG_STATIONEN = {
+    "03987": "Potsdam",
+    "01975": "Hamburg-Fuhlsbüttel",
+    "02290": "Hohenpeißenberg",
+    "05792": "Zugspitze",
+}
+# Stadt-Land-Paare mit Stundenwerten: (Stadt, Land)
+WAERMEINSEL_PAARE = [
+    ("00399", "03015"),  # Berlin-Alexanderplatz – Lindenberg
+    ("03379", "01262"),  # München-Stadt – München-Flughafen
+    ("04926", "04931"),  # Stuttgart (Neckartal) – Stuttgart-Echterdingen
+]
+TEMPERATURGRADIENT_K_PRO_M = 0.0065  # Standardatmosphäre
+QUELLE_STADT_LAND = "Daten: NOAA NCEI GHCN-Monthly v4; Städte: Natural Earth"
+
+
+def tagesgang(
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    unterordner: str = "tagesgang",
+) -> Ergebnis:
+    """Tagesgang der Erwärmung und Wärmeinsel im Tagesverlauf aus DWD-Stundenwerten."""
+    from klima import tagesgang as tg
+
+    referenz = referenz or standard_referenzperiode()
+    ergebnis = Ergebnis()
+    stationen = sorted({*TAGESGANG_STATIONEN, *(s for paar in WAERMEINSEL_PAARE for s in paar)})
+    stundenwerte = tg.stundenwerte_mez(stationen)
+    verfuegbar = set(stundenwerte["stations_id"].unique())
+    fehlend = sorted(set(stationen) - verfuegbar)
+    if fehlend:
+        raise ValueError(
+            "Für den Tagesgang fehlen Stundenwerte der Stationen "
+            f"{', '.join(fehlend)}. Laden mit: klima laden dwd_stunde_historisch "
+            f"dwd_stunde_aktuell {' '.join('--station ' + s for s in fehlend)}"
+        )
+    namen = de.einlesen.dwd_stationen("tag").astype({"stations_id": str}).set_index("stations_id")
+    jahre = tg.jahresmittel_je_stunde(stundenwerte, referenz)
+
+    # 1) Trend je Stunde
+    trends = tg.trend_je_stunde(jahre[jahre["stations_id"].isin(TAGESGANG_STATIONEN)], trend_von)
+    tabelle = trends.pivot(index="stunde", columns="stations_id", values="trend")
+    tabelle = tabelle.rename(columns=TAGESGANG_STATIONEN)[list(TAGESGANG_STATIONEN.values())]
+    ergebnis.tabellen["trend_je_stunde"] = tabelle
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(
+            tabelle, f"Zu welcher Tageszeit ist es seit {trend_von} am stärksten wärmer geworden?",
+            untertitel="Linearer Trend der Jahresmittel je Stunde (MEZ = UTC + 1, ohne Sommerzeit)",
+            glaettung=None, y_beschriftung="Trend (°C pro Dekade)",
+            x_beschriftung="Uhrzeit (MEZ)", quelle=QUELLE_DWD, legende_ort="lower left",
+        ),
+        "trend_je_stunde", unterordner,
+    )  # fmt: skip
+
+    # 2) Wärmebild Potsdam: Jahrzehnt × Stunde
+    jahrzehnte = tg.jahrzehnte_je_stunde(jahre[jahre["stations_id"] == "03987"])
+    bild = jahrzehnte.pivot(index="stunde", columns="jahrzehnt", values="anomalie")
+    bild.columns = [f"{j}er" for j in bild.columns]
+    ergebnis.tabellen["potsdam_jahrzehnt_stunde"] = bild
+    argumente = dict(
+        titel="Potsdam: Temperaturabweichung je Uhrzeit und Jahrzehnt",
+        untertitel=f"Jahresmittel je Stunde, Abweichung von {referenz[0]}–{referenz[1]} "
+        "(Uhrzeit MEZ)",
+        x_beschriftung="Jahrzehnt", y_beschriftung="Uhrzeit (MEZ)",
+    )  # fmt: skip
+    ergebnis.dateien += statisch.speichern(
+        statisch.waermebild(bild, quelle=QUELLE_DWD, **argumente), "potsdam_jahrzehnt_stunde",
+        unterordner,
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(interaktiv.waermebild(bild, **argumente), "potsdam_jahrzehnt_stunde",
+                             unterordner)
+    )  # fmt: skip
+
+    # 3) Wärmeinsel: Stadt minus Land je Stunde, Sommer und Winter, höhenbereinigt
+    felder, zusammenfassung = {}, []
+    for stadt, land in WAERMEINSEL_PAARE:
+        roh = tg.waermeinsel(stundenwerte, stadt, land)
+        hoehenunterschied = float(namen.loc[stadt, "hoehe"] - namen.loc[land, "hoehe"])
+        korrektur = TEMPERATURGRADIENT_K_PRO_M * hoehenunterschied
+        roh["differenz_hoehenbereinigt"] = roh["differenz"] + korrektur
+        titel = (
+            f"{namen.loc[stadt, 'name']} −\n{namen.loc[land, 'name']} "
+            f"({int(roh['von'].iloc[0])}–{int(roh['bis'].iloc[0])})"
+        )
+        tabelle = roh[roh["jahreszeit"].isin(["Sommer", "Winter"])].pivot(
+            index="stunde", columns="jahreszeit", values="differenz_hoehenbereinigt"
+        )
+        felder[titel] = tabelle
+        ergebnis.tabellen[f"waermeinsel_{stadt}_{land}"] = roh
+        zusammenfassung.append(
+            {
+                "paar": titel.replace("\n", " "),
+                "hoehenunterschied_m": hoehenunterschied,
+                "korrektur_k": korrektur,
+                "sommer_max": tabelle["Sommer"].max(),
+                "sommer_max_uhr": int(tabelle["Sommer"].idxmax()),
+                "sommer_min": tabelle["Sommer"].min(),
+                "winter_mittel": tabelle["Winter"].mean(),
+            }
+        )
+    ergebnis.tabellen["waermeinsel"] = pd.DataFrame(zusammenfassung)
+    ergebnis.dateien += statisch.speichern(
+        statisch.kleine_vielfache(
+            felder, "Städtische Wärmeinsel im Tagesverlauf",
+            {t: "Stadt − Land (°C)" for t in felder},
+            "Mittlere Temperaturdifferenz je Uhrzeit (MEZ), höhenbereinigt mit 0,65 °C pro 100 m",
+            farben={"Sommer": "#eb6834", "Winter": "#2a78d6"}, glaettung=None,
+            quelle=QUELLE_DWD,
+        ),
+        "waermeinsel_tagesgang", unterordner,
+    )  # fmt: skip
+    return ergebnis
+
+
+def stadt_land(
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    ab_jahr: int = 1900,
+    unterordner: str = "stadt_land",
+) -> Ergebnis:
+    """Trends städtischer und ländlicher Stationen: global (GHCNm) und Deutschland (DWD)."""
+    from klima import stadt_land as sl
+    from klima import weltweit as ww
+    from klima.kenntage import temperaturindizes
+
+    referenz = referenz or standard_referenzperiode()
+    ergebnis = Ergebnis()
+    orte = sl.staedte()
+
+    # 1) Global: Landtemperatur nur aus städtischen bzw. ländlichen Stationen
+    reihen = {}
+    for variante, text in (("qcf", "homogenisiert"), ("qcu", "unbereinigt")):
+        klassen = sl.klassifizieren(de.einlesen.ghcnm_stationen(variante), orte)
+        if variante == "qcf":
+            ergebnis.tabellen["ghcnm_klassen"] = klassen
+        anomalien_ = ww.stationsanomalien(variante, referenz).merge(
+            klassen[["stations_id", "lage"]].astype({"stations_id": str}), on="stations_id"
+        )
+        for lage in ("städtisch", "ländlich"):
+            gitter = ww.gitter_mittel(anomalien_[anomalien_["lage"] == lage], groesse=5.0)
+            reihe = ww.jahresanomalien(gitter, gebiete=("global",))["global"].loc[ab_jahr:]
+            name = f"{lage}, {text}"
+            reihen[name] = reihe
+            ergebnis.trends[f"Global Land {name}"] = linearer_trend(reihe, von=trend_von)
+    vergleich = pd.DataFrame(reihen)
+    ergebnis.tabellen["global_stadt_land"] = vergleich
+    farben = {
+        "städtisch, homogenisiert": "#eb6834", "ländlich, homogenisiert": "#1baf7a",
+        "städtisch, unbereinigt": "#eda100", "ländlich, unbereinigt": "#2a78d6",
+    }  # fmt: skip
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(
+            vergleich, "Globale Landtemperatur: städtische vs. ländliche Stationen",
+            untertitel="GHCNm, 5°-Gitter; städtisch: ≤ 10 km von Stadt ≥ 100.000 Einw., "
+            "ländlich: > 30 km von Orten ≥ 50.000 Einw. (Natural Earth)",
+            referenz=referenz, farben=farben, quelle=QUELLE_STADT_LAND,
+        ),
+        "global_stadt_land", unterordner,
+    )  # fmt: skip
+    differenz = pd.DataFrame(
+        {
+            "homogenisiert": vergleich["städtisch, homogenisiert"]
+            - vergleich["ländlich, homogenisiert"],
+            "unbereinigt": vergleich["städtisch, unbereinigt"] - vergleich["ländlich, unbereinigt"],
+        }
+    )
+    ergebnis.tabellen["global_stadt_minus_land"] = differenz
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(
+            differenz, "Städtische minus ländliche Stationen (global)",
+            untertitel="Jahresmittel der Anomalien in °C; ein wachsender Abstand würde einen "
+            "Einfluss der Wärmeinseln auf den Trend zeigen",
+            farben={"homogenisiert": "#1baf7a", "unbereinigt": "#eda100"},
+            quelle=QUELLE_STADT_LAND,
+        ),
+        "global_stadt_minus_land", unterordner,
+    )  # fmt: skip
+
+    # 2) Deutschland: Tmin, Tmax und Tropennächte für Stadt- und Landstationen
+    klassen_de = sl.klassifizieren(de.einlesen.dwd_stationen("tag"), orte)
+    ergebnis.tabellen["dwd_klassen"] = klassen_de
+    tageswerte = de.einlesen.dwd_tageswerte(
+        spalten=["stations_id", "datum", "jahr", "tmax", "tmin"]
+    )
+    indizes = temperaturindizes(tageswerte)
+    del tageswerte
+    felder = {}
+    groessen = {"tmin_mittel": ("Tagestiefstwerte (Tmin)", "°C"),
+                "tmax_mittel": ("Tageshöchstwerte (Tmax)", "°C"),
+                "tropennaechte": ("Tropennächte (Tmin ≥ 20 °C)", "Tage")}  # fmt: skip
+    for lage in ("städtisch", "ländlich"):
+        ids = klassen_de.loc[klassen_de["lage"] == lage, "stations_id"].astype(str)
+        teil = indizes[indizes["stations_id"].isin(ids)]
+        mittel = de.indizes_gebietsmittel(teil, list(groessen), referenz).loc[1951:]
+        for spalte, (titel, einheit) in groessen.items():
+            felder.setdefault(titel, pd.DataFrame())[f"{lage} ({len(ids)} Stationen)"] = mittel[
+                spalte
+            ]
+            ergebnis.trends[f"Deutschland {titel}, {lage}"] = linearer_trend(
+                mittel[spalte], von=trend_von
+            )
+            ergebnis.einheiten[f"Deutschland {titel}, {lage}"] = einheit
+    namen = list(next(iter(felder.values())).columns)
+    ergebnis.dateien += statisch.speichern(
+        statisch.kleine_vielfache(
+            felder, "Deutschland: städtische vs. ländliche DWD-Stationen",
+            {titel: einheit for titel, einheit in groessen.values()},
+            "Gebietsmittel aus Stadt- bzw. Landstationen (Einteilung nach Natural Earth)",
+            farben={namen[0]: "#eb6834", namen[1]: "#1baf7a"}, quelle=QUELLE_DWD,
+        ),
+        "deutschland_stadt_land", unterordner,
+    )  # fmt: skip
+    return ergebnis

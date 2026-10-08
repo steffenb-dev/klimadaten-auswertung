@@ -74,6 +74,10 @@ def _gistemp(dateien: list[Path]) -> list[Ausgabe]:
     return [Ausgabe("reihen", vergleichsreihen.lies_gistemp_alle(dateien))]
 
 
+def _hadcrut(dateien: list[Path]) -> list[Ausgabe]:
+    return [Ausgabe("reihen", vergleichsreihen.lies_hadcrut_alle(dateien))]
+
+
 def _dwd_stationen(dateien: list[Path]) -> list[Ausgabe]:
     teile = {"KL_Tageswerte": "stationen_tag", "KL_Monatswerte": "stationen_monat"}
     ausgaben = []
@@ -107,6 +111,7 @@ AUFBEREITER: dict[str, Callable[[list[Path]], list[Ausgabe]]] = {
     "ghcnm_laender": _ghcnm_laender,
     "ersst_v5": _ersst,
     "gistemp": _gistemp,
+    "hadcrut5": _hadcrut,
     "dwd_stationen": _dwd_stationen,
     "dwd_gebietsmittel_temperatur": _dwd_gebietsmittel("temperatur"),
     "dwd_gebietsmittel_niederschlag": _dwd_gebietsmittel("niederschlag"),

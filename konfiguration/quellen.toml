@@ -65,6 +65,20 @@ urls = [
 ]
 standard = true
 
+[hadcrut5]
+beschreibung = "Met Office HadCRUT 5.2, Jahresmittel Land+Ozean (aufgefüllt und nicht aufgefüllt)"
+typ = "datei"
+# Die Versionsnummer steckt im Pfad; bei neuen Versionen hier anpassen.
+urls = [
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/analysis/diagnostics/HadCRUT.5.2.0.0.analysis.summary_series.global.annual.csv",
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/analysis/diagnostics/HadCRUT.5.2.0.0.analysis.summary_series.northern_hemisphere.annual.csv",
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/analysis/diagnostics/HadCRUT.5.2.0.0.analysis.summary_series.southern_hemisphere.annual.csv",
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/non-infilled/diagnostics/HadCRUT.5.2.0.0.noninfilled.summary_series.global.annual.csv",
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/non-infilled/diagnostics/HadCRUT.5.2.0.0.noninfilled.summary_series.northern_hemisphere.annual.csv",
+    "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.2.0.0/non-infilled/diagnostics/HadCRUT.5.2.0.0.noninfilled.summary_series.southern_hemisphere.annual.csv",
+]
+standard = true
+
 # --- Deutscher Wetterdienst ----------------------------------------------------
 
 [dwd_stationen]

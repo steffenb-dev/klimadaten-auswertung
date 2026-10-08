@@ -357,3 +357,17 @@ def analysieren_global(
     ergebnis = auswertungen.weltweit_land(trend_von, _referenz(referenz_von, referenz_bis))
     typer.secho("Trends globale Landtemperatur:", bold=True)
     _trends_ausgeben(ergebnis)
+
+
+@analysieren_app.command("land-ozean")
+def analysieren_land_ozean(
+    trend_von: TrendVon = 1951,
+    referenz_von: ReferenzVon = None,
+    referenz_bis: ReferenzBis = None,
+) -> None:
+    """Globale Temperatur aus Land (GHCNm) und Ozean (ERSST) vs. GISTEMP und HadCRUT5."""
+    from klima import auswertungen
+
+    ergebnis = auswertungen.land_ozean(trend_von, _referenz(referenz_von, referenz_bis))
+    typer.secho("Trends globale Temperatur (Land + Ozean):", bold=True)
+    _trends_ausgeben(ergebnis)

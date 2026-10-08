@@ -65,6 +65,7 @@ uv run klima analysieren station 3987   # DWD-Station per ID …
 uv run klima analysieren station Potsdam   # … oder per Namensteil
 uv run klima analysieren jahresverlauf   # Tagesmitteltemperatur DE, jedes Jahr eine Linie
 uv run klima analysieren global          # globale Landtemperatur aus GHCNm vs. GISTEMP
+uv run klima analysieren land-ozean      # globale Temperatur Land + Ozean vs. GISTEMP/HadCRUT5
 ```
 
 Grafiken landen in `ausgabe/` – statisch als PNG/SVG, interaktiv als HTML (plotly).
@@ -76,6 +77,8 @@ Optionen wie `--trend-von`, `--referenz-von`/`--referenz-bis` siehe `--help`.
   Methode, Umgang mit Schaltjahren, Validierung gegen DWD, Extremtage
 - [Globale Landtemperatur aus Stationsdaten](docs/global_land.md) – Methode, Vergleich mit GISTEMP,
   Effekt der Homogenisierung, Abdeckung
+- [Globale Temperatur aus Land und Ozean](docs/global_land_ozean.md) – ERSST, Landanteil,
+  Vergleich mit GISTEMP und HadCRUT5
 
 ## Notebooks
 
@@ -85,6 +88,7 @@ uv run jupyter lab notebooks/
 
 - `01_deutschland.ipynb` – Gebietsmittel Deutschland: vier Berechnungswege im Vergleich, Niederschlag, Stationstrends, Potsdam
 - `02_global_land.ipynb` – globale Landtemperatur: QCU vs. QCF, Vergleich mit GISTEMP, Homogenisierung, Abdeckung
+- `03_global_land_ozean.ipynb` – Land + Ozean (ERSST), Vergleich mit GISTEMP und HadCRUT5
 
 ## Tests
 

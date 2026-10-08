@@ -154,6 +154,25 @@ def gistemp(
     return _lies(_ordner("gistemp") / "reihen.parquet", filter_, None).reset_index(drop=True)
 
 
+def hadcrut5(
+    gebiet: str | None = "global",
+    variante: str | None = "nicht_aufgefuellt",
+    von: int | None = None,
+    bis: int | None = None,
+) -> pd.DataFrame:
+    """HadCRUT5-Jahresanomalien (°C, Referenz 1961–1990) mit 95-%-Unsicherheitsbereich.
+
+    `gebiet`: `global`, `nordhalbkugel`, `suedhalbkugel`; `variante`: `nicht_aufgefuellt`
+    (nur Zellen mit Messungen – wie unsere Methode) oder `aufgefuellt`; `None` für alle.
+    """
+    filter_ = _jahresfilter(von, bis)
+    if gebiet is not None:
+        filter_.append(("gebiet", "==", gebiet))
+    if variante is not None:
+        filter_.append(("variante", "==", variante))
+    return _lies(_ordner("hadcrut5") / "reihen.parquet", filter_, None).reset_index(drop=True)
+
+
 # --- DWD ----------------------------------------------------------------------------
 
 

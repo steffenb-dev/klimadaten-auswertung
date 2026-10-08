@@ -99,7 +99,7 @@ mit Messdaten-Assimilation – bewusst *nicht* Teil der Rohdatenauswertung, höc
 |---|---|
 | GISTEMP global (Land+Ozean) | `https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv` |
 | GISTEMP nur Land | `https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts.csv` |
-| HadCRUT5 | `https://www.metoffice.gov.uk/hadobs/hadcrut5/` |
+| HadCRUT 5.2 (aufgefüllt und nicht aufgefüllt, global/Halbkugeln) | `https://www.metoffice.gov.uk/hadobs/hadcrut5/` |
 | Berkeley Earth | `https://berkeleyearth.org/data/` |
 | DWD Gebietsmittel Deutschland | `https://opendata.dwd.de/climate_environment/CDC/regional_averages_DE/` |
 
@@ -301,7 +301,7 @@ Hovern oder Auswählen echten Mehrwert bringt.
 
 - F-UI-1: CLI `klima` mit deutschen Unterbefehlen: `laden`, `aufbereiten`,
   `analysieren deutschland`, `analysieren station <ID|Name>`, `analysieren jahresverlauf`,
-  `analysieren global`, `stationen`.
+  `analysieren global`, `analysieren land-ozean`, `stationen`.
 - F-UI-2: Alle CLI-Funktionen sind dünne Hüllen um eine Python-API, die auch in Notebooks genutzt wird.
 - F-UI-3: Beispiel-Notebooks in `notebooks/`, je Meilenstein mindestens eines.
 
@@ -360,6 +360,7 @@ klimadaten-auswertung/
 │   ├── deutschland.py        # Gebietsmittel und Stationstrends für Deutschland
 │   ├── jahresverlauf.py      # tägliches Gebietsmittel, 365-Tage-Kalender
 │   ├── weltweit.py           # globale/hemisphärische Landtemperatur, Homogenisierung, Abdeckung
+│   ├── land_ozean.py         # ERSST-Anomalien, Landanteil, Kombination Land + Ozean
 │   ├── bestand.py            # Übersicht der lokal vorhandenen Stationen
 │   ├── auswertungen.py       # fertige Auswertungen inkl. Grafiken (für CLI und Notebooks)
 │   ├── kenntage.py           # Temperatur-Kenntage / Extremindizes (M6)

@@ -463,3 +463,171 @@ def weltweit_land(
         )
     )  # fmt: skip
     return ergebnis
+
+
+QUELLE_LAND_OZEAN = (
+    "Daten: NOAA NCEI GHCN-Monthly v4 und ERSST v5; "
+    "Vergleich: NASA GISTEMP v4, Met Office HadCRUT 5.2"
+)
+EIGENE_LO = "Land + Ozean (eigene Berechnung)"
+GISTEMP_LO = "NASA GISTEMP"
+HADCRUT_NICHT = "HadCRUT5 nicht aufgefüllt"
+HADCRUT_AUF = "HadCRUT5 aufgefüllt"
+FARBEN_LAND_OZEAN = {
+    GISTEMP_LO: "#2a78d6",
+    EIGENE_LO: "#1baf7a",
+    HADCRUT_NICHT: "#eb6834",
+    HADCRUT_AUF: "#eda100",
+    "Land": "#eb6834",
+    "Ozean": "#2a78d6",
+    "Land + Ozean": "#1baf7a",
+}
+
+
+def _hadcrut_jahre(gebiet: str, variante: str, referenz: tuple[int, int]) -> pd.Series:
+    """HadCRUT5 auf die eigene Referenzperiode umgerechnet (Original: 1961–1990)."""
+    reihe = de.einlesen.hadcrut5(gebiet=gebiet, variante=variante).set_index("jahr")["anomalie"]
+    reihe = reihe.astype("float64")
+    return reihe - reihe.loc[referenz[0] : referenz[1]].mean()
+
+
+def land_ozean(
+    trend_von: int = 1951,
+    referenz: tuple[int, int] | None = None,
+    ab_jahr: int = 1880,
+    unterordner: str = "global",
+) -> Ergebnis:
+    """Globale Temperatur aus Land (GHCNm, homogenisiert) und Ozean (ERSST) vs. GISTEMP/HadCRUT5."""
+    from klima import land_ozean as lo
+    from klima import weltweit as ww
+
+    referenz = referenz or standard_referenzperiode()
+    ref_text = f"{referenz[0]}–{referenz[1]}"
+    groesse = ww.standard_zellgroesse()
+    ergebnis = Ergebnis()
+
+    land = ww.gitter_mittel(ww.stationsanomalien("qcf", referenz), groesse=groesse)
+    ozean = lo.ozeananomalien(referenz, groesse)
+    kombiniert = lo.kombinieren(land, ozean, lo.landanteil(groesse))
+    jahre_land = ww.jahresanomalien(land)
+    jahre_ozean = ww.jahresanomalien(ozean)
+    jahre = ww.jahresanomalien(kombiniert)
+    ergebnis.tabellen["jahresanomalien"] = jahre
+    # Nur Jahre, die in der eigenen Reihe vollständig sind (HadCRUT enthält das laufende Jahr)
+    letztes = int(jahre.index.max())
+
+    def zuschnitt(reihe: pd.Series) -> pd.Series:
+        return reihe.loc[ab_jahr:letztes]
+
+    # 1) Globale Kurve im Vergleich
+    vergleich = pd.DataFrame(
+        {
+            GISTEMP_LO: zuschnitt(_gistemp_jahre("global", "land_ozean")),
+            EIGENE_LO: zuschnitt(jahre["global"]),
+            HADCRUT_NICHT: zuschnitt(_hadcrut_jahre("global", "nicht_aufgefuellt", referenz)),
+            HADCRUT_AUF: zuschnitt(_hadcrut_jahre("global", "aufgefuellt", referenz)),
+        }
+    )
+    ergebnis.tabellen["global_land_ozean"] = vergleich
+    for name in vergleich.columns:
+        ergebnis.trends[f"Global: {name}"] = linearer_trend(vergleich[name], von=trend_von)
+        ergebnis.trends[f"Global seit {ab_jahr}: {name}"] = linearer_trend(vergleich[name])
+    trend = ergebnis.trends[f"Global: {EIGENE_LO}"]
+    titel = "Globale Temperatur – eigene Berechnung aus Land- und Meeresdaten"
+    untertitel = (
+        f"Jahresmittel, Abweichung von {ref_text} (HadCRUT umgerechnet). "
+        f"Eigener Trend: {trend.text()}"
+    )
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(vergleich, titel, untertitel=untertitel, referenz=referenz,
+                            farben=FARBEN_LAND_OZEAN, quelle=QUELLE_LAND_OZEAN),
+        "global_land_ozean", unterordner,
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.zeitreihen(vergleich, titel, untertitel=f"Jahresmittel, Abweichung von "
+                                  f"{ref_text}", referenz=referenz, farben=FARBEN_LAND_OZEAN),
+            "global_land_ozean", unterordner,
+        )
+    )  # fmt: skip
+
+    # 2) Land, Ozean, kombiniert
+    anteile = pd.DataFrame(
+        {
+            "Land": zuschnitt(jahre_land["global"]),
+            "Ozean": zuschnitt(jahre_ozean["global"]),
+            "Land + Ozean": zuschnitt(jahre["global"]),
+        }
+    )
+    ergebnis.tabellen["land_ozean_anteile"] = anteile
+    for name in ("Land", "Ozean"):
+        ergebnis.trends[f"Nur {name}"] = linearer_trend(anteile[name], von=trend_von)
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(anteile, "Land erwärmt sich schneller als der Ozean",
+                            untertitel="Eigene Berechnung, Jahresmittel, Abweichung von "
+                            f"{ref_text}",
+                            referenz=referenz, farben=FARBEN_LAND_OZEAN, quelle=QUELLE_LAND_OZEAN),
+        "land_ozean_anteile", unterordner,
+    )  # fmt: skip
+
+    # 3) Halbkugeln im Vergleich
+    for gebiet, name in (("nordhalbkugel", "Nordhalbkugel"), ("suedhalbkugel", "Südhalbkugel")):
+        halbkugel = pd.DataFrame(
+            {
+                GISTEMP_LO: zuschnitt(_gistemp_jahre(gebiet, "land_ozean")),
+                EIGENE_LO: zuschnitt(jahre[gebiet]),
+                HADCRUT_NICHT: zuschnitt(_hadcrut_jahre(gebiet, "nicht_aufgefuellt", referenz)),
+            }
+        )
+        ergebnis.tabellen[f"{gebiet}_land_ozean"] = halbkugel
+        ergebnis.trends[f"{name}: {EIGENE_LO}"] = linearer_trend(halbkugel[EIGENE_LO], trend_von)
+        ergebnis.dateien += statisch.speichern(
+            statisch.zeitreihen(halbkugel, f"{name}: Land und Ozean",
+                                untertitel=f"Jahresmittel, Abweichung von {ref_text}",
+                                referenz=referenz, farben=FARBEN_LAND_OZEAN,
+                                quelle=QUELLE_LAND_OZEAN),
+            f"{gebiet}_land_ozean", unterordner,
+        )  # fmt: skip
+
+    # 4) Differenzen zu den Referenzdatensätzen
+    differenz = pd.DataFrame(
+        {
+            "eigene minus GISTEMP": vergleich[EIGENE_LO] - vergleich[GISTEMP_LO],
+            "eigene minus HadCRUT5 nicht aufgefüllt": vergleich[EIGENE_LO]
+            - vergleich[HADCRUT_NICHT],
+        }
+    )
+    ergebnis.tabellen["differenzen"] = differenz
+    ergebnis.dateien += statisch.speichern(
+        statisch.zeitreihen(differenz, "Eigene Berechnung minus Referenzdatensätze",
+                            untertitel="Jahresmittel Land + Ozean in °C; 0 = gleiche Anomalie",
+                            quelle=QUELLE_LAND_OZEAN),
+        "global_land_ozean_differenzen", unterordner,
+    )  # fmt: skip
+
+    # 5) Karten
+    jahrzehnte = ww.jahrzehntmittel(kombiniert)
+    jahrzehnte = jahrzehnte[jahrzehnte["jahrzehnt"] >= (ab_jahr // 10) * 10]
+    ergebnis.tabellen["jahrzehnte"] = jahrzehnte
+    letztes_jahrzehnt = int(jahrzehnte["jahrzehnt"].max())
+    letzter_monat = int(kombiniert["jahr"].max())
+    ergebnis.dateien += statisch.speichern(
+        statisch.gitterkarte(jahrzehnte[jahrzehnte["jahrzehnt"] == letztes_jahrzehnt],
+                             f"Temperaturanomalie Land und Ozean {letztes_jahrzehnt}–"
+                             f"{letzter_monat}",
+                             untertitel=f"Mittel je {groesse:g}°-Zelle, Abweichung von {ref_text}; "
+                             "Meereis ohne Wert", zellgroesse=groesse, quelle=QUELLE_LAND_OZEAN),
+        "gitterkarte_land_ozean_letztes_jahrzehnt", unterordner, formate=("png",),
+    )  # fmt: skip
+    ergebnis.dateien.append(
+        interaktiv.speichern(
+            interaktiv.gitterkarte_zeitregler(
+                jahrzehnte, "jahrzehnt", "Temperaturanomalie Land und Ozean je Jahrzehnt",
+                untertitel=f"GHCNm homogenisiert + ERSST v5, {groesse:g}°-Zellen, Abweichung "
+                f"von {ref_text}", zellgroesse=groesse,
+                beschriftung=lambda z: f"{z}–{min(z + 9, letzter_monat)}",
+            ),
+            "gitterkarte_land_ozean_jahrzehnte", unterordner,
+        )
+    )  # fmt: skip
+    return ergebnis

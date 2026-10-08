@@ -48,3 +48,41 @@ def lies_gistemp_alle(dateien: list[Path]) -> pd.DataFrame:
     teile = [lies_gistemp(p) for p in sorted(dateien)]
     alle = pd.concat(teile, ignore_index=True)
     return alle.astype({"gebiet": "category", "art": "category"})
+
+
+# --- HadCRUT5 (Met Office / UEA CRU) -------------------------------------------------
+
+HADCRUT_GEBIETE = {
+    "global": "global",
+    "northern_hemisphere": "nordhalbkugel",
+    "southern_hemisphere": "suedhalbkugel",
+}
+HADCRUT_VARIANTEN = {"analysis": "aufgefuellt", "noninfilled": "nicht_aufgefuellt"}
+HADCRUT_REFERENZ = (1961, 1990)
+
+
+def lies_hadcrut(pfad: Path) -> pd.DataFrame:
+    """Eine HadCRUT5-Jahresreihe: `gebiet`, `variante`, `jahr`, `anomalie`, `unten`, `oben`.
+
+    Anomalien beziehen sich auf 1961–1990; `unten`/`oben` sind die Grenzen des
+    95-%-Unsicherheitsbereichs. Das laufende Jahr ist in der Quelle bereits enthalten
+    (Mittel der bisherigen Monate).
+    """
+    teile = pfad.name.split(".")
+    try:
+        variante = HADCRUT_VARIANTEN[teile[5]]
+        gebiet = HADCRUT_GEBIETE[teile[7]]
+    except (IndexError, KeyError) as fehler:
+        raise ValueError(f"Unbekannte HadCRUT-Datei: {pfad.name}") from fehler
+    with oeffne_text(pfad) as datei:
+        tabelle = pd.read_csv(datei)
+    tabelle.columns = ["jahr", "anomalie", "unten", "oben"]
+    tabelle.insert(0, "gebiet", gebiet)
+    tabelle.insert(1, "variante", variante)
+    return tabelle.astype({"jahr": "int16", "anomalie": "float32", "unten": "float32",
+                           "oben": "float32"})  # fmt: skip
+
+
+def lies_hadcrut_alle(dateien: list[Path]) -> pd.DataFrame:
+    alle = pd.concat([lies_hadcrut(p) for p in sorted(dateien)], ignore_index=True)
+    return alle.astype({"gebiet": "category", "variante": "category"})
